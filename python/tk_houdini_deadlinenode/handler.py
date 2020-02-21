@@ -77,7 +77,7 @@ class TkDeadlineNodeHandler(object):
     def get_deadline_info(self):
         return self._deadline_info
 
-    def SubmitToDeadline(self, node):
+    def submit_to_deadline(self, node):
         self._app.log_info('Submit to deadline not implemented yet!')
 
     ############################################################################

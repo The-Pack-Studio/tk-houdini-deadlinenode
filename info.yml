@@ -20,6 +20,7 @@ configuration:
             disk.  This is used to drive the version and optionally the name of
             output files.
         fields: context, version, [name]
+        
 # the Shotgun fields that this app needs in order to operate correctly
 requires_shotgun_fields:
 
