@@ -77,12 +77,46 @@ class TkDeadlineNodeHandler(object):
     def get_deadline_info(self):
         return self._deadline_info
 
-    def submit_to_deadline(self, node):
-        self._app.log_info('Submit to deadline not implemented yet!')
+    def submit_to_deadline(self, sgtk_dl_node):
+        # clear dependecies dict
+        self._dl_submitted_ids = {}
+
+        if not sgtk_dl_node.isLocked():
+            dep_nodes = sgtk_dl_node.inputs()
+            
+            for render_node in dep_nodes:
+                self._submit_node_tree_lookup(render_node)
+        else:
+            self._app.log_info('Sgtk Deadline node locked, will not submit any jobs!')
 
     ############################################################################
     # Private methods
-            
+    
+    def _submit_node_tree_lookup(self, render_node):
+        accept_types = ['sgtk_geometry', 'sgtk_mantra', 'sgtk_arnold']
+        dep_job_ids = []
+        
+        if not render_node.isLocked():
+            dep_nodes = render_node.inputs()
+            for dep_node in dep_nodes:
+                if dep_node.path() not in self._dl_submitted_ids.keys():
+                    self._submit_node_tree_lookup(dep_node)
+                    
+                dep_job_ids.extend(self._dl_submitted_ids[dep_node.path()])
+                
+        if not render_node.isBypassed() and render_node.type().name() in accept_types:
+            if render_node.type().name() == 'sgtk_geometry':
+                render_node.hm().pre_render(render_node)
+           
+            self._dl_submitted_ids[render_node.path()] = self._submit_render_job(render_node, dep_job_ids)
+        else:
+            self._dl_submitted_ids[render_node.path()] = dep_job_ids
+
+    def _submit_render_job(self, node, dependencies):
+        self._app.log_info(node.path())
+        self._app.log_info('Dependencies {}'.format(dependencies))
+        return [node.path()]
+
     # extract fields from current Houdini file using the workfile template
     def _get_hipfile_fields(self):
         work_file_path = hou.hipFile.path()
