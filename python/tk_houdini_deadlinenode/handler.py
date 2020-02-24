@@ -18,7 +18,7 @@ import hou
 
 # toolkit
 import sgtk
-from sgtk.platform.qt import QtCore, QtGui
+from sgtk.platform.qt import QtCore
 
 
 class TkDeadlineNodeHandler(object):
@@ -52,25 +52,10 @@ class TkDeadlineNodeHandler(object):
         # logging methods, tank, context, etc.
         self._app = app
 
-        # get deadline variables
-        self._deadline_info = {}
-
+        # setup deadline qprocess
         if os.environ.has_key('DEADLINE_PATH'):
-            if hou.isUIAvailable():
-                self._deadline_bin = os.path.join(os.environ['DEADLINE_PATH'], 'deadlinecommand')
-
-                process = QtCore.QProcess(hou.qt.mainWindow())
-                arguments = ["-prettyJSON", "-GetSubmissionInfo", "Pools", "Groups", "MaxPriority", 
-                                "TaskLimit", "UserHomeDir", "RepoDir:submission/Houdini/Main", 
-                                "RepoDir:submission/Integration/Main", "RepoDirNoCustom:draft", 
-                                "RepoDirNoCustom:submission/Jigsaw"]
-
-                process.start(self._deadline_bin, arguments)
-                process.waitForFinished()
-                self._deadline_info = json.loads(str(process.readAllStandardOutput()))["result"]
-                self._app.log_debug('Retrieved deadline info {}'.format(self._deadline_info))
-        else:
-            self._app.log_error('Could not find deadline environment variable!')
+            self._process = QtCore.QProcess(hou.qt.mainWindow())
+            self._process.finished.connect(self._dependecy_finished)
 
         # create deadline connection
         deadline_repo = os.path.join(self._app.get_setting("deadline_server_root"), "api", "python")
@@ -99,47 +84,54 @@ class TkDeadlineNodeHandler(object):
             # ingore any errors. ex: metrics logging not supported
             pass
 
+        self._node = node
+
     def get_deadline_pools(self):
         return self._deadline_pools
 
     def get_deadline_groups(self):
         return self._deadline_groups
 
-    def submit_to_deadline(self, sgtk_dl_node):
+    def submit_to_deadline(self):
         # get static data
         self._session_info = {
             'department': self._app.context.step['name'],
-            'pool': sgtk_dl_node.parm('dl_pool').evalAsString(),
-            'sec_pool': sgtk_dl_node.parm('dl_secondary_pool').evalAsString(),
-            'group': sgtk_dl_node.parm('dl_group').evalAsString(),
-            'chunk_size': sgtk_dl_node.parm('dl_chunk_size').evalAsString(),
+            'pool': self._node.parm('dl_pool').evalAsString(),
+            'sec_pool': self._node.parm('dl_secondary_pool').evalAsString(),
+            'group': self._node.parm('dl_group').evalAsString(),
+            'chunk_size': self._node.parm('dl_chunk_size').evalAsString(),
             'dependencies': []
         }
 
-        if sgtk_dl_node.parm('dl_dependencies').evalAsString() != '':
-            self._session_info['dependencies'] = sgtk_dl_node.parm('dl_dependencies').evalAsString().split(',')
+        if self._node.parm('dl_dependencies').evalAsString() != '':
+            self._session_info['dependencies'] = self._node.parm('dl_dependencies').evalAsString().split(',')
 
         # clear dependecies dict
         self._dl_submitted_ids = {}
 
-        if not sgtk_dl_node.isLocked():
-            dep_nodes = sgtk_dl_node.inputs()
+        if not self._node.isLocked():
+            dep_nodes = self._node.inputs()
             
             for render_node in dep_nodes:
                 self._submit_node_tree_lookup(render_node)
         else:
             self._app.log_info('Sgtk Deadline node locked, will not submit any jobs!')
 
-    def call_deadline_command(self, arguments):
-        process = QtCore.QProcess(hou.qt.mainWindow())
-
-        process.start(self._deadline_bin, arguments)
-        process.waitForFinished()
-        return str(process.readAllStandardOutput())
+    def deadline_dependencies(self):        
+        if os.environ.has_key('DEADLINE_PATH'):
+            deadline_bin = os.path.join(os.environ['DEADLINE_PATH'], 'deadlinecommand')
+            self._process.start(deadline_bin, ["-selectdependencies", self._node.parm('dl_dependencies').eval()])
 
     ############################################################################
     # Private methods
     
+    def _dependecy_finished(self):
+        output = str(self._process.readAllStandardOutput())
+        output = output.replace("\r", "").replace("\n", "")
+
+        if output != "Action was cancelled by user":
+            self._node.parm('dl_dependencies').set(output)
+
     def _submit_node_tree_lookup(self, render_node):
         dep_job_ids = []
         
@@ -161,19 +153,14 @@ class TkDeadlineNodeHandler(object):
             self._dl_submitted_ids[render_node.path()] = dep_job_ids
 
     def _submit_dl_job(self, node, dependencies):
-        self._app.log_info(node.path())
-
         export_job = False
         if node.type().name() in self.TK_SUP_RENDER_ROPS:
             export_job = True
 
             disk_file = node.parm(self.TK_DISK_RENDER_ROPS[self.TK_SUP_RENDER_ROPS.index(node.type().name())]).evalAtFrame(0)
             output_file = node.parm(self.TK_OUT_RENDER_ROPS[self.TK_SUP_RENDER_ROPS.index(node.type().name())]).unexpandedString()
-            self._app.log_info('Disk file ' + disk_file)
-            self._app.log_info('Output file ' + output_file)
         else:
             output_file = node.parm(self.TK_OUT_GEO_ROPS[self.TK_SUP_GEO_ROPS.index(node.type().name())]).evalAsString()
-            self._app.log_info('Output file ' + output_file)
         
         output_file = output_file.replace('$F4', '####')
 
@@ -239,7 +226,6 @@ class TkDeadlineNodeHandler(object):
             env_index += 1
 
         dependencies.extend(self._session_info['dependencies'])
-        self._app.log_info('Dependencies {}'.format(dependencies))
         if len(dependencies):
             job_info_file['JobDependencies'] = ' '.join(dependencies)
         
@@ -277,7 +263,6 @@ class TkDeadlineNodeHandler(object):
         plugin_info_file["Build"] = "None"
 
         render_job_id = self._deadline_connect.Jobs.SubmitJob(job_info_file, plugin_info_file)["_id"]
-        self._app.log_info("Result {}".format(render_job_id))
 
         # export job
         if export_job:
@@ -323,7 +308,6 @@ class TkDeadlineNodeHandler(object):
                 export_plugin_info_file["Verbose"] = 4
 
             export_job_id = self._deadline_connect.Jobs.SubmitJob(export_job_info_file, export_plugin_info_file)["_id"]
-            self._app.log_info("Result {}".format(export_job_id))
 
             return export_job_id
         return render_job_id
