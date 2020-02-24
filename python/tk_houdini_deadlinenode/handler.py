@@ -53,7 +53,7 @@ class TkDeadlineNodeHandler(object):
         self._app = app
 
         # setup deadline qprocess
-        if os.environ.has_key('DEADLINE_PATH'):
+        if os.environ.has_key('DEADLINE_PATH') and hou.isUIAvailable():
             self._process = QtCore.QProcess(hou.qt.mainWindow())
             self._process.finished.connect(self._dependecy_finished)
 
@@ -96,10 +96,14 @@ class TkDeadlineNodeHandler(object):
         # get static data
         self._session_info = {
             'department': self._app.context.step['name'],
+            'task': self._app.context.task['name'],
+            'entity': self._app.context.entity['name'],
+            'project': self._app.context.project['name'],
             'pool': self._node.parm('dl_pool').evalAsString(),
             'sec_pool': self._node.parm('dl_secondary_pool').evalAsString(),
             'group': self._node.parm('dl_group').evalAsString(),
             'chunk_size': self._node.parm('dl_chunk_size').evalAsString(),
+            'username': self._app.context.user['firstname'],
             'dependencies': []
         }
 
@@ -114,6 +118,8 @@ class TkDeadlineNodeHandler(object):
             
             for render_node in dep_nodes:
                 self._submit_node_tree_lookup(render_node)
+
+            hou.ui.setStatusMessage('Successfully sent job(s) to the farm!', hou.severityType.ImportantMessage)
         else:
             self._app.log_info('Sgtk Deadline node locked, will not submit any jobs!')
 
@@ -164,9 +170,16 @@ class TkDeadlineNodeHandler(object):
         
         output_file = output_file.replace('$F4', '####')
 
-        # Configure job name
+        # Configure job name and version
         name_batch = hou.getenv('HIPNAME')
         name = '{} - {}'.format(hou.getenv('HIPNAME'), node.path())
+
+        work_file_path = hou.hipFile.path()
+        work_file_template = self._app.get_template("work_file_template")
+        if (work_file_template and work_file_template.validate(work_file_path)):
+            version = work_file_template.get_fields(work_file_path)['version']
+        
+        # Override for sgtk_geometry
         if node.type().name() == 'sgtk_geometry':
             version = node.parm('ver').evalAsInt()
             name = '{} v{}'.format(name, str(version).zfill(3))
@@ -174,6 +187,7 @@ class TkDeadlineNodeHandler(object):
         # Create submission info file
         job_info_file = {
             "Plugin": "Houdini",
+            "UserName": self._session_info['username'],
             "Name": name,
             "Department": self._session_info['department'],
             "Pool": self._session_info['pool'],
@@ -181,6 +195,10 @@ class TkDeadlineNodeHandler(object):
             "Group": self._session_info['group'],
             "Priority": self.TK_DEFAULT_GEO_PRIORITY,
             "BatchName": name_batch,
+            "ExtraInfo0": self._session_info['task'],
+            "ExtraInfo1": self._session_info['project'],
+            "ExtraInfo2": self._session_info['entity'],
+            "ExtraInfo3": version,
             }
 
         # Nozon important env vars from the running Houdini to the job's env (donat)
@@ -249,18 +267,19 @@ class TkDeadlineNodeHandler(object):
         else:
             job_info_file['OutputDirectory0'] = os.path.dirname(disk_file)
 
-        plugin_info_file = {}
+        ver = hou.applicationVersion()
+        plugin_info_file = {
+            "Version": "%s.%s" % (ver[0], ver[1]),
+            "IgnoreInputs": True,
+            "OutputDriver": node.path(),
+            "Build": "None",
+        }
+
         if node.type().name() == 'sgtk_geometry':
             path = node.hm().app().handler.get_backup_file(node)
             plugin_info_file["SceneFile"] = path
         else:
             plugin_info_file["SceneFile"] = hou.hipFile.path()
-
-        ver = hou.applicationVersion()
-        plugin_info_file["Version"] = "%s.%s" % (ver[0], ver[1])
-        plugin_info_file["IgnoreInputs"] = True
-        plugin_info_file["OutputDriver"] = node.path()
-        plugin_info_file["Build"] = "None"
 
         render_job_id = self._deadline_connect.Jobs.SubmitJob(job_info_file, plugin_info_file)["_id"]
 
@@ -271,6 +290,7 @@ class TkDeadlineNodeHandler(object):
             # job info file
             export_job_info_file = {
                 "Name": name,
+                "UserName": self._session_info['username'],
                 "Department": self._session_info['department'],
                 "Pool": self._session_info['pool'],
                 "SecondaryPool": self._session_info['sec_pool'],
@@ -282,6 +302,11 @@ class TkDeadlineNodeHandler(object):
                 "ChunkSize": 1,
                 "OutputFilename0": output_file,
                 "BatchName": name_batch,
+                "ExtraInfoKeyValue0": "%s=%s" % ("ProjectDirectory", os.path.basename(os.environ.get("TANK_CURRENT_PC"))),
+                "ExtraInfo0": self._session_info['task'],
+                "ExtraInfo1": self._session_info['project'],
+                "ExtraInfo2": self._session_info['entity'],
+                "ExtraInfo3": version,
                 }
 
             if "sgtk_mantra" in export_type:
@@ -290,11 +315,8 @@ class TkDeadlineNodeHandler(object):
                 export_job_info_file["Plugin"] = "Arnold"
 
             # Shotgun location
-            if os.environ.get("TANK_CURRENT_PC") is not None:
+            if os.environ.get("TANK_CURRENT_PC"):
                 export_job_info_file["EnvironmentKeyValue0"] = "%s=%s" % ("NOZ_TK_CONFIG_PATH", os.environ.get("TANK_CURRENT_PC"))
-
-            # Project Name
-            export_job_info_file["ExtraInfoKeyValue0"] = "%s=%s" % ("ProjectDirectory", os.path.basename(os.environ.get("TANK_CURRENT_PC")))
 
             # plugin info file
             export_plugin_info_file = { "CommandLineOptions": "" }
