@@ -340,15 +340,3 @@ class TkDeadlineNodeHandler(object):
             return (str(node_range[0]), str(node_range[1]), str(node_range[2]))
         else:
             return (0, 0, 1)
-    
-    # extract fields from current Houdini file using the workfile template
-    def _get_hipfile_fields(self):
-        work_file_path = hou.hipFile.path()
-
-        work_fields = {}
-        work_file_template = self._app.get_template("work_file_template")
-        if (work_file_template and 
-            work_file_template.validate(work_file_path)):
-            work_fields = work_file_template.get_fields(work_file_path)
-
-        return work_fields
