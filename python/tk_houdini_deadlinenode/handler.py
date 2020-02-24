@@ -11,6 +11,7 @@
 # built-ins
 import os
 import json
+import sys
 
 # houdini
 import hou
@@ -71,6 +72,22 @@ class TkDeadlineNodeHandler(object):
         else:
             self._app.log_error('Could not find deadline environment variable!')
 
+        # create deadline connection
+        deadline_repo = os.path.join(self._app.get_setting("deadline_server_root"), "api", "python")
+        if os.path.exists(deadline_repo):
+            sys.path.append(deadline_repo)
+
+            import Deadline.DeadlineConnect as Connect
+
+            self._deadline_connect = Connect.DeadlineCon('192.168.100.14', 8082)
+
+            # cache pools and groups
+            self._deadline_pools = self._deadline_connect.Pools.GetPoolNames()
+            self._deadline_groups = self._deadline_connect.Groups.GetGroupNames()
+        else:
+            self._app.log_error('Could not find deadline repo!')
+        
+
     ############################################################################
     # methods and callbacks executed via the OTLs
 
@@ -82,15 +99,11 @@ class TkDeadlineNodeHandler(object):
             # ingore any errors. ex: metrics logging not supported
             pass
 
-    def call_deadline_command(self, arguments):
-        process = QtCore.QProcess(hou.qt.mainWindow())
-        
-        process.start(self._deadline_bin, arguments)
-        process.waitForFinished()
-        return str(process.readAllStandardOutput())
+    def get_deadline_pools(self):
+        return self._deadline_pools
 
-    def get_deadline_info(self):
-        return self._deadline_info
+    def get_deadline_groups(self):
+        return self._deadline_groups
 
     def submit_to_deadline(self, sgtk_dl_node):
         # get static data
@@ -117,6 +130,13 @@ class TkDeadlineNodeHandler(object):
         else:
             self._app.log_info('Sgtk Deadline node locked, will not submit any jobs!')
 
+    def call_deadline_command(self, arguments):
+        process = QtCore.QProcess(hou.qt.mainWindow())
+
+        process.start(self._deadline_bin, arguments)
+        process.waitForFinished()
+        return str(process.readAllStandardOutput())
+
     ############################################################################
     # Private methods
     
@@ -135,11 +155,12 @@ class TkDeadlineNodeHandler(object):
             if render_node.type().name() == 'sgtk_geometry':
                 render_node.hm().pre_render(render_node)
             
-            self._dl_submitted_ids[render_node.path()] = [self._submit_render_job(render_node, dep_job_ids)]
+            dep_id = self._submit_dl_job(render_node, dep_job_ids)
+            self._dl_submitted_ids[render_node.path()] = [dep_id]
         else:
             self._dl_submitted_ids[render_node.path()] = dep_job_ids
 
-    def _submit_render_job(self, node, dependencies):
+    def _submit_dl_job(self, node, dependencies):
         self._app.log_info(node.path())
 
         export_job = False
@@ -163,6 +184,18 @@ class TkDeadlineNodeHandler(object):
             version = node.parm('ver').evalAsInt()
             name = '{} v{}'.format(name, str(version).zfill(3))
 
+        # Create submission info file
+        job_info_file = {
+            "Plugin": "Houdini",
+            "Name": name,
+            "Department": self._session_info['department'],
+            "Pool": self._session_info['pool'],
+            "SecondaryPool": self._session_info['sec_pool'],
+            "Group": self._session_info['group'],
+            "Priority": self.TK_DEFAULT_GEO_PRIORITY,
+            "BatchName": name_batch,
+            }
+
         # Nozon important env vars from the running Houdini to the job's env (donat)
         env_vars = ['RLM_LICENSE',
                     'SOLIDANGLE_LICENSE',
@@ -170,170 +203,138 @@ class TkDeadlineNodeHandler(object):
                     'HOUDINI_OTLSCAN_PATH',
                     'PYTHONPATH']
 
-        # Create submission info file
-        job_info_file = os.path.join(self._deadline_info["UserHomeDir"], "temp", "houdini_submit_info.job")
-        with open(job_info_file, "w") as file_handle:
-            file_handle.write("Plugin=Houdini\n")
-            file_handle.write("Name=%s\n" % name)
-            file_handle.write("Department=%s\n" % self._session_info['department'])
-            file_handle.write("Pool=%s\n" % self._session_info['pool'])
-            file_handle.write("SecondaryPool=%s\n" % self._session_info['sec_pool'])
-            file_handle.write("Group=%s\n" % self._session_info['group'])
-            file_handle.write("Priority=%s\n" % self.TK_DEFAULT_GEO_PRIORITY)
-            file_handle.write("BatchName=%s\n" % name_batch)
-
-            # LOOP THROUGH THE VARS AND ADD A LINE TO THE JOB FILE FOR EACH DEFINED ENVIRONMENT VARIABLE.
-            env_index = 0
-            for env_var in env_vars:
-                #CHECK THAT THE ENVIRONMENT VARIABLE HAS BEEN SET (WE DON'T WANT TO PASS 'NONE' TYPE VALUES TO DEADLINE AS THIS CAN CAUSE PROBLEMS)
-                if os.environ.get(env_var) is not None:
-                    file_handle.write("EnvironmentKeyValue%d=%s=%s\n" % (env_index, env_var, os.environ.get(env_var)))
-                    env_index += 1
-            # Shotgun location
-            if os.environ.get("TANK_CURRENT_PC") is not None:
-                file_handle.write("EnvironmentKeyValue%d=%s=%s\n" % (env_index, "NOZ_TK_CONFIG_PATH", os.environ.get("TANK_CURRENT_PC")))
+        # LOOP THROUGH THE VARS AND ADD A LINE TO THE JOB FILE FOR EACH DEFINED ENVIRONMENT VARIABLE.
+        env_index = 0
+        for env_var in env_vars:
+            #CHECK THAT THE ENVIRONMENT VARIABLE HAS BEEN SET (WE DON'T WANT TO PASS 'NONE' TYPE VALUES TO DEADLINE AS THIS CAN CAUSE PROBLEMS)
+            if os.environ.get(env_var) is not None:
+                job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % (env_var, os.environ.get(env_var))
                 env_index += 1
+        # Shotgun location
+        if os.environ.get("TANK_CURRENT_PC") is not None:
+            job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("NOZ_TK_CONFIG_PATH", os.environ.get("TANK_CURRENT_PC"))
+            env_index += 1
 
-            # getting rid of tk-houdini in the Houdini_Path env var
-            if os.environ.get("HOUDINI_PATH") is not None:
-                hou_path = os.environ.get("HOUDINI_PATH")
-                hou_path_list = hou_path.split(";")
-                hou_path_list_no_sgtk = [x for x in hou_path_list if 'tk-houdini' not in x]
-                hou_path_no_sgtk = ";".join(hou_path_list_no_sgtk)
-                file_handle.write("EnvironmentKeyValue%d=%s=%s\n" % (env_index, "HOUDINI_PATH", hou_path_no_sgtk))
-                env_index += 1
+        # getting rid of tk-houdini in the Houdini_Path env var
+        if os.environ.get("HOUDINI_PATH") is not None:
+            hou_path = os.environ.get("HOUDINI_PATH")
+            hou_path_list = hou_path.split(";")
+            hou_path_list_no_sgtk = [x for x in hou_path_list if 'tk-houdini' not in x]
+            hou_path_no_sgtk = ";".join(hou_path_list_no_sgtk)
+            job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("HOUDINI_PATH", hou_path_no_sgtk)
+            env_index += 1
 
-            # parse the PATH var to only take houdini stuff
-            if os.environ.get("PATH") is not None: 
-                e_path = os.environ.get("PATH")
-                e_path_list = e_path.split(";")
-                # we might miss stuff here !!!
-                e_path_hou_only_list = [x for x in e_path_list if 'houdini' in x.lower()]
-                e_path_hou_only = ";".join(e_path_hou_only_list)
-                file_handle.write("EnvironmentKeyValue%d=%s=%s\n" % (env_index, "PATH", e_path_hou_only))
-                env_index += 1
+        # parse the PATH var to only take houdini stuff
+        if os.environ.get("PATH") is not None: 
+            e_path = os.environ.get("PATH")
+            e_path_list = e_path.split(";")
+            # we might miss stuff here !!!
+            e_path_hou_only_list = [x for x in e_path_list if 'houdini' in x.lower()]
+            e_path_hou_only = ";".join(e_path_hou_only_list)
+            job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("PATH", e_path_hou_only)
+            env_index += 1
 
-            if hou.getenv("HIPFILE") is not None:
-                file_handle.write("EnvironmentKeyValue%d=%s=%s\n" % (env_index, "NOZ_HIPFILE", hou.getenv("HIPFILE")))
-                env_index += 1
+        if hou.getenv("HIPFILE") is not None:
+            job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("NOZ_HIPFILE", hou.getenv("HIPFILE"))
+            env_index += 1
 
-            dependencies.extend(self._session_info['dependencies'])
-            self._app.log_info('Dependencies {}'.format(dependencies))
-            if len(dependencies):
-                file_handle.write("JobDependencies=%s\n" % ' '.join(dependencies))
-            
-            # Set correct Frame Range
-            frame_range = self._get_frame_range(node)
-            file_handle.write("Frames=%s-%s\n" % (frame_range[0], frame_range[1]))
-            
-            # Set Chunk size
-            chunk_size = self._session_info['chunk_size']
-            if node.parm('initsim') and node.parm('initsim').evalAsInt():
+        dependencies.extend(self._session_info['dependencies'])
+        self._app.log_info('Dependencies {}'.format(dependencies))
+        if len(dependencies):
+            job_info_file['JobDependencies'] = ' '.join(dependencies)
+        
+        # Set correct Frame Range
+        frame_range = self._get_frame_range(node)
+        job_info_file['Frames'] = "%s-%s" % (frame_range[0], frame_range[1])
+        
+        # Set Chunk size
+        chunk_size = self._session_info['chunk_size']
+        if node.parm('initsim') and node.parm('initsim').evalAsInt():
+            chunk_size = frame_range[1] - frame_range[0] + 1
+        elif node.type().name() == 'sgtk_geometry':
+            if node.parm('types').evalAsString() == 'abc' and node.parm('abcSingleFile').evalAsInt():
                 chunk_size = frame_range[1] - frame_range[0] + 1
-            elif node.type().name() == 'sgtk_geometry':
-                if node.parm('types').evalAsString() == 'abc' and node.parm('abcSingleFile').evalAsInt():
-                    chunk_size = frame_range[1] - frame_range[0] + 1
-            
-            file_handle.write("ChunkSize=%s\n" % chunk_size)
-            
-            # output
-            if not export_job:
-                file_handle.write("OutputFilename0=%s\n" % output_file)
-            else:
-                file_handle.write("OutputDirectory0=%s\n" % os.path.dirname(disk_file))
+        
+        job_info_file['ChunkSize'] = chunk_size
+        
+        # output
+        if not export_job:
+            job_info_file['OutputFilename0'] = output_file
+        else:
+            job_info_file['OutputDirectory0'] = os.path.dirname(disk_file)
 
-        pluginInfoFile = os.path.join(self._deadline_info["UserHomeDir"], "temp", "houdini_plugin_info.job")
-        with open(pluginInfoFile, "w") as file_handle:
-            if node.type().name() == 'sgtk_geometry':
-                path = node.hm().app().handler.get_backup_file(node)
-                file_handle.write("SceneFile=%s\n" % path)
-            else:
-                file_handle.write("SceneFile=%s\n" % hou.hipFile.path())
+        plugin_info_file = {}
+        if node.type().name() == 'sgtk_geometry':
+            path = node.hm().app().handler.get_backup_file(node)
+            plugin_info_file["SceneFile"] = path
+        else:
+            plugin_info_file["SceneFile"] = hou.hipFile.path()
 
-            ver = hou.applicationVersion()
-            file_handle.write("Version=%s.%s\n" % (ver[0], ver[1]))
-            file_handle.write("IgnoreInputs=%s\n" % True)
-            file_handle.write("OutputDriver=%s\n" % node.path())
-            file_handle.write("Build=None\n")
+        ver = hou.applicationVersion()
+        plugin_info_file["Version"] = "%s.%s" % (ver[0], ver[1])
+        plugin_info_file["IgnoreInputs"] = True
+        plugin_info_file["OutputDriver"] = node.path()
+        plugin_info_file["Build"] = "None"
 
-        process = QtCore.QProcess(hou.qt.mainWindow())
-        process.start(self._deadline_bin, [job_info_file, pluginInfoFile])
-        process.waitForFinished()
+        render_job_id = self._deadline_connect.Jobs.SubmitJob(job_info_file, plugin_info_file)["_id"]
+        self._app.log_info("Result {}".format(render_job_id))
 
-        render_job_id = self._get_job_id_from_submission(str(process.readAllStandardOutput()))
-        self._app.log_info("\n".join([line.strip() for line in str(process.readAllStandardOutput()).split("\n") if line.strip()]))
-
+        # export job
         if export_job:
             export_type = node.type().name()
 
-            export_job_info_file = os.path.join(self._deadline_info["UserHomeDir"], "temp", "export_job_info.job")
-            export_plugin_info_file = os.path.join(self._deadline_info["UserHomeDir"], "temp", "export_plugin_info.job")
+            # job info file
+            export_job_info_file = {
+                "Name": name,
+                "Department": self._session_info['department'],
+                "Pool": self._session_info['pool'],
+                "SecondaryPool": self._session_info['sec_pool'],
+                "Group": "arnold",
+                "JobDependencies": render_job_id,
+                "Priority": self.TK_DEFAULT_RENDER_PRIORITY,
+                "IsFrameDependent": True,
+                "Frames": "%s-%s" % (frame_range[0], frame_range[1]),
+                "ChunkSize": 1,
+                "OutputFilename0": output_file,
+                "BatchName": name_batch,
+                }
 
-            with open(export_job_info_file, 'w') as file_handle:
-                if "sgtk_mantra" in export_type:
-                    file_handle.write("Plugin=Mantra\n")
-                elif "sgtk_arnold" in export_type:
-                    file_handle.write("Plugin=Arnold\n")
+            if "sgtk_mantra" in export_type:
+                export_job_info_file["Plugin"] = "Mantra"
+            elif "sgtk_arnold" in export_type:
+                export_job_info_file["Plugin"] = "Arnold"
 
-                # Shotgun location
-                if os.environ.get("TANK_CURRENT_PC") is not None:
-                    file_handle.write("EnvironmentKeyValue0=%s=%s\n" % ("NOZ_TK_CONFIG_PATH", os.environ.get("TANK_CURRENT_PC")))
+            # Shotgun location
+            if os.environ.get("TANK_CURRENT_PC") is not None:
+                export_job_info_file["EnvironmentKeyValue0"] = "%s=%s" % ("NOZ_TK_CONFIG_PATH", os.environ.get("TANK_CURRENT_PC"))
 
-                # Project Name
-                file_handle.write("ExtraInfoKeyValue0=%s=%s\n" % ("ProjectDirectory", os.path.basename(os.environ.get("TANK_CURRENT_PC"))))
+            # Project Name
+            export_job_info_file["ExtraInfoKeyValue0"] = "%s=%s" % ("ProjectDirectory", os.path.basename(os.environ.get("TANK_CURRENT_PC")))
 
-                file_handle.write("Name=%s\n" % name)
-                file_handle.write("Department=%s\n" % self._session_info['department'])
-                file_handle.write("Pool=%s\n" % self._session_info['pool'])
-                file_handle.write("SecondaryPool=%s\n" % self._session_info['sec_pool'])
-                file_handle.write("Group=arnold\n")
-                file_handle.write("JobDependencies=%s\n" % render_job_id)
-                file_handle.write("Priority=%s\n" % self.TK_DEFAULT_RENDER_PRIORITY)
-                file_handle.write("IsFrameDependent=true\n")
-                file_handle.write("Frames=%s-%s\n" % (frame_range[0], frame_range[1]))
-                file_handle.write("ChunkSize=1\n")
-                file_handle.write("OutputFilename0=%s\n" % output_file)
-                file_handle.write("BatchName=%s\n" % name_batch)
+            # plugin info file
+            export_plugin_info_file = { "CommandLineOptions": "" }
+            if export_type == "sgtk_mantra":
+                export_plugin_info_file["SceneFile"] = disk_file
 
-            with open(export_plugin_info_file, 'w') as file_handle:
-                if export_type == "sgtk_mantra":
-                    file_handle.write("SceneFile=%s\n" % disk_file)
-                    file_handle.write("CommandLineOptions=\n")
+                major_version, minor_version = hou.applicationVersion()[:2]
+                export_plugin_info_file["Version"] = "%s.%s" % (major_version, minor_version)
+            elif export_type == "sgtk_arnold":
+                export_plugin_info_file["InputFile"] = disk_file
+                export_plugin_info_file["Verbose"] = 4
 
-                    major_version, minor_version = hou.applicationVersion()[:2]
-                    file_handle.write("Version=%s.%s\n" % (major_version, minor_version))
-                elif export_type == "sgtk_arnold":
-                    file_handle.write("InputFile=" + disk_file + "\n")
-                    file_handle.write("CommandLineOptions=\n")
-                    file_handle.write("Verbose=4\n")
-
-            process = QtCore.QProcess(hou.qt.mainWindow())
-            process.start(self._deadline_bin, [export_job_info_file, export_plugin_info_file])
-            process.waitForFinished()
-
-            export_job_id = self._get_job_id_from_submission(str(process.readAllStandardOutput()))
-            self._app.log_info("\n".join([line.strip() for line in str(process.readAllStandardOutput()).split("\n") if line.strip()]))
+            export_job_id = self._deadline_connect.Jobs.SubmitJob(export_job_info_file, export_plugin_info_file)["_id"]
+            self._app.log_info("Result {}".format(export_job_id))
 
             return export_job_id
         return render_job_id
-
-    def _get_job_id_from_submission(self, submission_results):
-        job_id = ""
-        self._app.log_info('Submission Result %s' % submission_results)
-        for line in submission_results.split():
-            if line.startswith("JobID="):
-                job_id = line.replace("JobID=", "").strip()
-                break
-
-        return job_id
-
+    
     def _get_frame_range(self, node):
         if node.parm('trange').evalAsString() == 'normal':
             node_range = node.parmTuple('f').evalAsStrings()
             return (str(node_range[0]), str(node_range[1]), str(node_range[2]))
         else:
             return (0, 0, 1)
-
+    
     # extract fields from current Houdini file using the workfile template
     def _get_hipfile_fields(self):
         work_file_path = hou.hipFile.path()

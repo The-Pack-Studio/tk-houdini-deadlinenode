@@ -13,6 +13,11 @@
 
 # expected fields in the configuration file for this app
 configuration:
+    deadline_server_root:
+        type: str
+        description: >
+            Path to the deadline install of the main server
+            
     work_file_template:
         type: template
         description: >
