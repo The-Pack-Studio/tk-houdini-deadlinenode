@@ -22,7 +22,7 @@ from sgtk.platform.qt import QtCore
 
 
 class TkDeadlineNodeHandler(object):
-    """Handle Tk Geometry node operations and callbacks."""
+    """Handle Tk Deadline node operations and callbacks."""
 
 
     ############################################################################
