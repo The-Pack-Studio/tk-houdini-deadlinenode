@@ -239,9 +239,7 @@ class TkDeadlineNodeHandler(object):
             job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("PATH", e_path_hou_only)
             env_index += 1
 
-        if hou.getenv("HIPFILE") is not None:
-            job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("NOZ_HIPFILE", hou.getenv("HIPFILE"))
-            env_index += 1
+        job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("NOZ_HIPFILE", hou.hipFile.path())
 
         dependencies.extend(self._session_info['dependencies'])
         if len(dependencies):
