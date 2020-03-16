@@ -334,7 +334,7 @@ class TkDeadlineNodeHandler(object):
     
     def _get_frame_range(self, node):
         if node.parm('trange').evalAsString() == 'normal':
-            node_range = node.parmTuple('f').evalAsStrings()
-            return (str(node_range[0]), str(node_range[1]), str(node_range[2]))
+            node_range = node.parmTuple('f').evalAsFloats()
+            return (int(node_range[0]), int(node_range[1]), int(node_range[2]))
         else:
             return (0, 0, 1)
