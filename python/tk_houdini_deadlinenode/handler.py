@@ -84,8 +84,6 @@ class TkDeadlineNodeHandler(object):
             # ingore any errors. ex: metrics logging not supported
             pass
 
-        self._node = node
-
     def get_deadline_pools(self):
         return self._deadline_pools
 
@@ -99,22 +97,22 @@ class TkDeadlineNodeHandler(object):
             'task': self._app.context.task['name'],
             'entity': self._app.context.entity['name'],
             'project': self._app.context.project['name'],
-            'pool': self._node.parm('dl_pool').evalAsString(),
-            'sec_pool': self._node.parm('dl_secondary_pool').evalAsString(),
-            'group': self._node.parm('dl_group').evalAsString(),
-            'chunk_size': self._node.parm('dl_chunk_size').evalAsString(),
-            'username': self._app.context.user['firstname'],
+            'pool': hou.pwd().parm('dl_pool').evalAsString(),
+            'sec_pool': hou.pwd().parm('dl_secondary_pool').evalAsString(),
+            'group': hou.pwd().parm('dl_group').evalAsString(),
+            'chunk_size': hou.pwd().parm('dl_chunk_size').evalAsString(),
+            'username': self._app.context.user['name'],
             'dependencies': []
         }
 
-        if self._node.parm('dl_dependencies').evalAsString() != '':
-            self._session_info['dependencies'] = self._node.parm('dl_dependencies').evalAsString().split(',')
+        if hou.pwd().parm('dl_dependencies').evalAsString() != '':
+            self._session_info['dependencies'] = hou.pwd().parm('dl_dependencies').evalAsString().split(',')
 
         # clear dependecies dict
         self._dl_submitted_ids = {}
 
-        if not self._node.isLocked():
-            dep_nodes = self._node.inputs()
+        if not hou.pwd().isLocked():
+            dep_nodes = hou.pwd().inputs()
             
             for render_node in dep_nodes:
                 self._submit_node_tree_lookup(render_node)
@@ -126,7 +124,7 @@ class TkDeadlineNodeHandler(object):
     def deadline_dependencies(self):        
         if os.environ.has_key('DEADLINE_PATH'):
             deadline_bin = os.path.join(os.environ['DEADLINE_PATH'], 'deadlinecommand')
-            self._process.start(deadline_bin, ["-selectdependencies", self._node.parm('dl_dependencies').eval()])
+            self._process.start(deadline_bin, ["-selectdependencies", hou.pwd().parm('dl_dependencies').eval()])
 
     ############################################################################
     # Private methods
@@ -136,7 +134,7 @@ class TkDeadlineNodeHandler(object):
         output = output.replace("\r", "").replace("\n", "")
 
         if output != "Action was cancelled by user":
-            self._node.parm('dl_dependencies').set(output)
+            hou.pwd().parm('dl_dependencies').set(output)
 
     def _submit_node_tree_lookup(self, render_node):
         dep_job_ids = []
