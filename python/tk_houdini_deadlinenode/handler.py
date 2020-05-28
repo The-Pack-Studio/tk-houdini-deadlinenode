@@ -91,6 +91,8 @@ class TkDeadlineNodeHandler(object):
         return self._deadline_groups
 
     def submit_to_deadline(self):
+        firstname = self._app.context.user['name'].split(' ')[0]
+
         # get static data
         self._session_info = {
             'department': self._app.context.step['name'],
@@ -101,7 +103,7 @@ class TkDeadlineNodeHandler(object):
             'sec_pool': hou.pwd().parm('dl_secondary_pool').evalAsString(),
             'group': hou.pwd().parm('dl_group').evalAsString(),
             'chunk_size': hou.pwd().parm('dl_chunk_size').evalAsString(),
-            'username': self._app.context.user['name'],
+            'username': firstname,
             'dependencies': []
         }
 
