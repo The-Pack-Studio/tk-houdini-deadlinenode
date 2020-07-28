@@ -153,7 +153,7 @@ class TkDeadlineNodeHandler(object):
                 dep_job_ids.extend(self._dl_submitted_ids[dep_node.path()])
                 
         if not render_node.isBypassed() and render_node.type().name() in (self.TK_SUP_GEO_ROPS + self.TK_SUP_RENDER_ROPS):
-            if render_node.type().name() == 'sgtk_geometry':
+            if render_node.type().name() in ['sgtk_geometry', 'sgtk_arnold']:
                 render_node.hm().pre_render(render_node)
             
             dep_id = self._submit_dl_job(render_node, dep_job_ids)
@@ -183,7 +183,7 @@ class TkDeadlineNodeHandler(object):
             version = work_file_template.get_fields(work_file_path)['version']
         
         # Override for sgtk_geometry
-        if node.type().name() == 'sgtk_geometry':
+        if node.type().name() in ['sgtk_geometry', 'sgtk_arnold']:
             version = node.parm('ver').evalAsInt()
             name = '{} v{}'.format(name, str(version).zfill(3))
 
@@ -309,6 +309,20 @@ class TkDeadlineNodeHandler(object):
                 "ExtraInfo2": self._session_info['entity'],
                 "ExtraInfo3": version,
                 }
+
+            # Add extra values for renders to enable post jobs on deadline
+            if node.type().name() in ['sgtk_geometry', 'sgtk_arnold']:
+                publish_info = {'publish_name': name,
+                            'publish_type': 'Rendered Image', 
+                            'publish_version': version, 
+                            'publish_comment': '',
+                            'publish_dependencies_paths': [], 
+                            'publish_dependencies_ids': []
+                            }
+                publish_info = json.dumps(publish_info)
+
+                export_job_info_file["ExtraInfoKeyValue1"] = "context=%s" % self._app.context.serialize(with_user_credentials=False, use_json=True),
+                export_job_info_file["ExtraInfoKeyValue2"] = "PublishInfo=%s" % publish_info
 
             if "sgtk_mantra" in export_type:
                 export_job_info_file["Plugin"] = "Mantra"
