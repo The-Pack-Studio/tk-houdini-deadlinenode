@@ -263,10 +263,10 @@ class TkDeadlineNodeHandler(object):
         job_info_file['ChunkSize'] = chunk_size
         
         # output
-        if not export_job:
-            job_info_file['OutputFilename0'] = output_file
-        else:
+        if export_job:
             job_info_file['OutputDirectory0'] = os.path.dirname(disk_file)
+        else:
+            job_info_file['OutputFilename0'] = output_file
 
         ver = hou.applicationVersion()
         plugin_info_file = {
@@ -287,7 +287,7 @@ class TkDeadlineNodeHandler(object):
         # export job
         if export_job:
             export_type = node.type().name()
-
+            
             # job info file
             export_job_info_file = {
                 "Name": name,
@@ -301,9 +301,10 @@ class TkDeadlineNodeHandler(object):
                 "IsFrameDependent": True,
                 "Frames": "%s-%s" % (frame_range[0], frame_range[1]),
                 "ChunkSize": 1,
-                "OutputFilename0": output_file,
+                "OutputFilename0": os.path.basename(output_file),
+                "OutputDirectory0": os.path.dirname(output_file),
                 "BatchName": name_batch,
-                "ExtraInfoKeyValue0": "%s=%s" % ("ProjectDirectory", os.path.basename(os.environ.get("TANK_CURRENT_PC"))),
+                "ExtraInfoKeyValue0": "%s=%s" % ("ProjectDirectory", os.path.basename(self._app.sgtk.pipeline_configuration.get_path())),
                 "ExtraInfo0": self._session_info['task'],
                 "ExtraInfo1": self._session_info['project'],
                 "ExtraInfo2": self._session_info['entity'],
@@ -321,8 +322,17 @@ class TkDeadlineNodeHandler(object):
                             }
                 publish_info = json.dumps(publish_info)
 
-                export_job_info_file["ExtraInfoKeyValue1"] = "context=%s" % self._app.context.serialize(with_user_credentials=False, use_json=True),
+                export_job_info_file["ExtraInfoKeyValue1"] = "context=%s" % self._app.context.serialize(with_user_credentials=False, use_json=True)
                 export_job_info_file["ExtraInfoKeyValue2"] = "PublishInfo=%s" % publish_info
+                export_job_info_file["ExtraInfoKeyValue3"] = "ShotgunEvent_createVersion=True"
+                
+                export_job_info_file["ExtraInfoKeyValue4"] = "ProjectScriptFolder=%s" % os.path.join(self._app.sgtk.pipeline_configuration.get_config_location(), "hooks", "tk-multi-publish2", "nozonpub")
+                export_job_info_file["ExtraInfoKeyValue5"] = "NozCreateSGMovie=True"
+                export_job_info_file["ExtraInfoKeyValue6"] = "UploadSGMovie=True"
+                export_job_info_file["ExtraInfoKeyValue7"] = "FrameRate=%s" % hou.fps()
+                export_job_info_file["ExtraInfoKeyValue8"] = "NozMovSettingsPreset=3d"
+
+                export_job_info_file["ExtraInfo5"] = export_job_info_file["UserName"]
 
             if "sgtk_mantra" in export_type:
                 export_job_info_file["Plugin"] = "Mantra"
@@ -330,8 +340,7 @@ class TkDeadlineNodeHandler(object):
                 export_job_info_file["Plugin"] = "Arnold"
 
             # Shotgun location
-            if os.environ.get("TANK_CURRENT_PC"):
-                export_job_info_file["EnvironmentKeyValue0"] = "%s=%s" % ("NOZ_TK_CONFIG_PATH", os.environ.get("TANK_CURRENT_PC"))
+            export_job_info_file["EnvironmentKeyValue0"] = "NOZ_TK_CONFIG_PATH=%s" % self._app.sgtk.pipeline_configuration.get_path()
 
             # plugin info file
             export_plugin_info_file = { "CommandLineOptions": "" }
