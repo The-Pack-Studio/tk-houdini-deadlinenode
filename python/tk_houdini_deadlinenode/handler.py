@@ -308,7 +308,7 @@ class TkDeadlineNodeHandler(object):
                 "ExtraInfo0": self._session_info['task'],
                 "ExtraInfo1": self._session_info['project'],
                 "ExtraInfo2": self._session_info['entity'],
-                "ExtraInfo3": version,
+                "ExtraInfo3": "{} - {} v{} - {}".format(self._session_info['entity'], self._session_info['task'], str(version).zfill(3), self._session_info['username'])
                 }
 
             # Add extra values for renders to enable post jobs on deadline
@@ -331,6 +331,11 @@ class TkDeadlineNodeHandler(object):
                 export_job_info_file["ExtraInfoKeyValue6"] = "UploadSGMovie=True"
                 export_job_info_file["ExtraInfoKeyValue7"] = "FrameRate=%s" % hou.fps()
                 export_job_info_file["ExtraInfoKeyValue8"] = "NozMovSettingsPreset=3d"
+                
+                export_job_info_file["ExtraInfoKeyValue9"] = "EntityType=%s" % self._session_info['task']
+                export_job_info_file["ExtraInfoKeyValue10"] = "ProjectId=%i" % self._app.context.project['id']
+                export_job_info_file["ExtraInfoKeyValue11"] = "TaskId=%i" % self._app.context.task['id']
+                export_job_info_file["ExtraInfoKeyValue12"] = "EntityId=%i"% self._app.context.entity['id']
 
                 export_job_info_file["ExtraInfo5"] = export_job_info_file["UserName"]
 
