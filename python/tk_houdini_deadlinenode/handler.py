@@ -115,9 +115,7 @@ class TkDeadlineNodeHandler(object):
         self._dl_submitted_ids = {}
 
         if not self._dl_node.isLocked():
-            dep_nodes = self._dl_node.inputs()
-            
-            for render_node in dep_nodes:
+            for render_node in self._dl_node.inputs():
                 self._submit_node_tree_lookup(render_node)
 
             hou.ui.setStatusMessage('Successfully sent job(s) to the farm!', hou.severityType.ImportantMessage)
@@ -145,8 +143,7 @@ class TkDeadlineNodeHandler(object):
         dep_job_ids = []
 
         if not render_node.isLocked():
-            dep_nodes = render_node.inputs()
-            for dep_node in dep_nodes:
+            for dep_node in render_node.inputs():
                 if dep_node.path() not in self._dl_submitted_ids.keys():
                     self._submit_node_tree_lookup(dep_node)
                     
