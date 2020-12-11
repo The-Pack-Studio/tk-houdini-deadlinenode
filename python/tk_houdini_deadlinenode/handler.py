@@ -242,9 +242,9 @@ class TkDeadlineNodeHandler(object):
         job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("NOZ_HIPFILE", hou.hipFile.path())
 
         dependencies.extend(self._session_info['dependencies'])
-        if len(dependencies):
-            job_info_file['JobDependencies'] = ' '.join(dependencies)
-        
+        for index, dependency in enumerate(dependencies):
+            job_info_file['JobDependency{}'.format(str(index))] = dependency
+
         # Set correct Frame Range
         frame_range = self._get_frame_range(node)
         job_info_file['Frames'] = "%s-%s" % (frame_range[0], frame_range[1])
