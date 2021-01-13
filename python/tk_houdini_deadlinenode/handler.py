@@ -142,21 +142,22 @@ class TkDeadlineNodeHandler(object):
     def _submit_node_tree_lookup(self, render_node):
         dep_job_ids = []
 
-        if not render_node.isLocked():
-            for dep_node in render_node.inputs():
-                if dep_node.path() not in self._dl_submitted_ids.keys():
-                    self._submit_node_tree_lookup(dep_node)
+        if render_node:
+            if not render_node.isLocked():
+                for dep_node in render_node.inputs():
+                    if dep_node.path() not in self._dl_submitted_ids.keys():
+                        self._submit_node_tree_lookup(dep_node)
+                        
+                    dep_job_ids.extend(self._dl_submitted_ids[dep_node.path()])
                     
-                dep_job_ids.extend(self._dl_submitted_ids[dep_node.path()])
+            if not render_node.isBypassed() and render_node.type().name() in (self.TK_SUP_GEO_ROPS + self.TK_SUP_RENDER_ROPS):
+                if render_node.type().name() in ['sgtk_geometry', 'sgtk_arnold']:
+                    render_node.hm().pre_render(render_node)
                 
-        if not render_node.isBypassed() and render_node.type().name() in (self.TK_SUP_GEO_ROPS + self.TK_SUP_RENDER_ROPS):
-            if render_node.type().name() in ['sgtk_geometry', 'sgtk_arnold']:
-                render_node.hm().pre_render(render_node)
-            
-            dep_id = self._submit_dl_job(render_node, dep_job_ids)
-            self._dl_submitted_ids[render_node.path()] = [dep_id]
-        else:
-            self._dl_submitted_ids[render_node.path()] = dep_job_ids
+                dep_id = self._submit_dl_job(render_node, dep_job_ids)
+                self._dl_submitted_ids[render_node.path()] = [dep_id]
+            else:
+                self._dl_submitted_ids[render_node.path()] = dep_job_ids
 
     def _submit_dl_job(self, node, dependencies):
         export_job = False
