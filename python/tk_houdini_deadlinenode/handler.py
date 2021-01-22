@@ -36,6 +36,7 @@ class TkDeadlineNodeHandler(object):
     TK_DISK_RENDER_ROPS = ['sgtk_soho_diskfile', 'sgtk_ass_diskfile']
 
     TK_DEFAULT_GEO_PRIORITY = 500
+    TK_DEFAULT_SIM_PRIORITY = 501
     TK_DEFAULT_RENDER_PRIORITY = 50
 
     ############################################################################
@@ -185,6 +186,11 @@ class TkDeadlineNodeHandler(object):
             version = node.parm('ver').evalAsInt()
             name = '{} v{}'.format(name, str(version).zfill(3))
 
+        # Different priority when it is a sim
+        priority = self.TK_DEFAULT_GEO_PRIORITY
+        if node.parm('initsim') and node.parm('initsim').evalAsInt():
+            priority = self.TK_DEFAULT_SIM_PRIORITY
+
         # Create submission info file
         job_info_file = {
             "Plugin": "Houdini",
@@ -194,7 +200,7 @@ class TkDeadlineNodeHandler(object):
             "Pool": self._session_info['pool'],
             "SecondaryPool": self._session_info['sec_pool'],
             "Group": self._session_info['group'],
-            "Priority": self.TK_DEFAULT_GEO_PRIORITY,
+            "Priority": priority,
             "BatchName": name_batch,
             "ExtraInfo0": self._session_info['task'],
             "ExtraInfo1": self._session_info['project'],
