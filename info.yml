@@ -13,10 +13,19 @@
 
 # expected fields in the configuration file for this app
 configuration:
-    deadline_server_root:
+    deadline_server_python_api:
         type: str
         description: >
-            Path to the deadline install of the main server
+            Path to the deadline python api install location of the main server
+
+    deadline_server_ip:
+        type: str
+        description: Ip of the deadline server
+
+    deadline_server_port:
+        type: int
+        default_value: 8082
+        description: Port of the deadline server
             
     work_file_template:
         type: template

@@ -59,13 +59,13 @@ class TkDeadlineNodeHandler(object):
             self._process.finished.connect(self._dependecy_finished)
 
         # create deadline connection
-        deadline_repo = os.path.join(self._app.get_setting("deadline_server_root"), "api", "python")
+        deadline_repo = self._app.get_setting("deadline_server_python_api")
         if os.path.exists(deadline_repo):
             sys.path.append(deadline_repo)
 
             import Deadline.DeadlineConnect as Connect
 
-            self._deadline_connect = Connect.DeadlineCon('192.168.100.14', 8082)
+            self._deadline_connect = Connect.DeadlineCon(self._app.get_setting("deadline_server_ip"), self._app.get_setting("deadline_server_port"))
 
             # cache pools and groups
             self._deadline_pools = self._deadline_connect.Pools.GetPoolNames()
@@ -201,6 +201,7 @@ class TkDeadlineNodeHandler(object):
             "SecondaryPool": self._session_info['sec_pool'],
             "Group": self._session_info['group'],
             "Priority": priority,
+            "IsFrameDependent": True,
             "BatchName": name_batch,
             "ExtraInfo0": self._session_info['task'],
             "ExtraInfo1": self._session_info['project'],
