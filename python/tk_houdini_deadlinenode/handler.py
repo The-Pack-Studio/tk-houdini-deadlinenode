@@ -173,13 +173,13 @@ class TkDeadlineNodeHandler(object):
         output_file = output_file.replace('$F4', '####')
 
         # Configure job name and version
-        name_batch = hou.getenv('HIPNAME')
-        name = '{} - {}'.format(hou.getenv('HIPNAME'), node.path())
-
         work_file_path = hou.hipFile.path()
         work_file_template = self._app.get_template("work_file_template")
         if (work_file_template and work_file_template.validate(work_file_path)):
             version = work_file_template.get_fields(work_file_path)['version']
+
+        batch_name = 'Houdini - {} - {} - {} - v{}'.format(self._session_info['project'], self._session_info['entity'], self._session_info['task'], str(version).zfill(3))
+        name = '{} - {}'.format(hou.getenv('HIPNAME'), node.path())
         
         # Override for sgtk_geometry
         if node.type().name() in ['sgtk_geometry', 'sgtk_arnold']:
@@ -202,7 +202,7 @@ class TkDeadlineNodeHandler(object):
             "Group": self._session_info['group'],
             "Priority": priority,
             "IsFrameDependent": True,
-            "BatchName": name_batch,
+            "BatchName": batch_name,
             "ExtraInfo0": self._session_info['task'],
             "ExtraInfo1": self._session_info['project'],
             "ExtraInfo2": self._session_info['entity'],
@@ -308,7 +308,7 @@ class TkDeadlineNodeHandler(object):
                 "ChunkSize": 1,
                 "OutputFilename0": os.path.basename(output_file),
                 "OutputDirectory0": os.path.dirname(output_file),
-                "BatchName": name_batch,
+                "BatchName": batch_name,
                 "ExtraInfoKeyValue0": "%s=%s" % ("ProjectDirectory", os.path.basename(self._app.sgtk.pipeline_configuration.get_path())),
                 "ExtraInfo0": self._session_info['task'],
                 "ExtraInfo1": self._session_info['project'],
