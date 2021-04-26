@@ -59,13 +59,20 @@ class TkDeadlineNodeHandler(object):
             self._process.finished.connect(self._dependecy_finished)
 
         # create deadline connection
-        deadline_repo = self._app.get_setting("deadline_server_python_api")
+        deadline_repo = ''
+        if sys.platform == "linux" or sys.platform == "linux2":
+            deadline_repo = self._app.get_setting("dl_server_python_api_lnx")
+        elif sys.platform == "darwin":
+            deadline_repo = self._app.get_setting("dl_server_python_api_mac")
+        elif sys.platform == "win32":
+            deadline_repo = self._app.get_setting("dl_server_python_api_win")
+
         if os.path.exists(deadline_repo):
             sys.path.append(deadline_repo)
 
             import Deadline.DeadlineConnect as Connect
 
-            self._deadline_connect = Connect.DeadlineCon(self._app.get_setting("deadline_server_ip"), self._app.get_setting("deadline_server_port"))
+            self._deadline_connect = Connect.DeadlineCon(self._app.get_setting("dl_server_ip"), self._app.get_setting("dl_server_port"))
 
             # cache pools and groups
             self._deadline_pools = self._deadline_connect.Pools.GetPoolNames()
