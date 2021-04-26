@@ -15,16 +15,19 @@
 configuration:
     dl_server_python_api_win:
         type: str
+        default_value: ""
         description: >
             Path to the deadline python api install location of the main server for windows
     
     dl_server_python_api_lnx:
         type: str
+        default_value: ""
         description: >
             Path to the deadline python api install location of the main server for linux
 
     dl_server_python_api_mac:
         type: str
+        default_value: ""
         description: >
             Path to the deadline python api install location of the main server for mac
 
