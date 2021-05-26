@@ -235,23 +235,16 @@ class TkDeadlineNodeHandler(object):
             job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("NOZ_TK_CONFIG_PATH", os.environ.get("TANK_CURRENT_PC"))
             env_index += 1
 
-        # getting rid of tk-houdini in the Houdini_Path env var
-        if os.environ.get("HOUDINI_PATH") is not None:
-            hou_path = os.environ.get("HOUDINI_PATH")
-            hou_path_list = hou_path.split(";")
-            hou_path_list_no_sgtk = [x for x in hou_path_list if 'tk-houdini' not in x]
-            hou_path_no_sgtk = ";".join(hou_path_list_no_sgtk)
-            job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("HOUDINI_PATH", hou_path_no_sgtk)
-            env_index += 1
 
         # parse the PATH var to only take houdini stuff
         if os.environ.get("PATH") is not None: 
             e_path = os.environ.get("PATH")
             e_path_list = e_path.split(";")
-            # we might miss stuff here !!!
             e_path_hou_only_list = [x for x in e_path_list if 'houdini' in x.lower()]
             e_path_hou_only = ";".join(e_path_hou_only_list)
             job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("PATH", e_path_hou_only)
+            env_index += 1
+            job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("HOUDINI_PATH", e_path_hou_only)
             env_index += 1
 
         job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("NOZ_HIPFILE", hou.hipFile.path())
