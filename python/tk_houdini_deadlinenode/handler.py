@@ -102,10 +102,16 @@ class TkDeadlineNodeHandler(object):
         firstname = self._app.context.user['name'].split(' ')[0]
         self._dl_node = node
 
+        # Sometimes shotgun does not have a task weirdly enough (bug maybe)
+        if not self._app.context.task:
+            task = self._app.context.step['name']
+        else:
+            task = self._app.context.task['name']
+
         # get static data
         self._session_info = {
             'department': self._app.context.step['name'],
-            'task': self._app.context.task['name'],
+            'task': task,
             'entity': self._app.context.entity['name'],
             'project': self._app.context.project['name'],
             'pool': self._dl_node.parm('dl_pool').evalAsString(),
@@ -346,7 +352,14 @@ class TkDeadlineNodeHandler(object):
                 
                 export_job_info_file["ExtraInfoKeyValue9"] = "EntityType=%s" % self._session_info['task']
                 export_job_info_file["ExtraInfoKeyValue10"] = "ProjectId=%i" % self._app.context.project['id']
-                export_job_info_file["ExtraInfoKeyValue11"] = "TaskId=%i" % self._app.context.task['id']
+
+                # Sometimes shotgun does not have a task weirdly enough (bug maybe)
+                if self._app.context.task:
+                    task_id = self._app.context.task['id']
+                else:
+                    task_id = self._app.context.step['id']
+
+                export_job_info_file["ExtraInfoKeyValue11"] = "TaskId=%i" % task_id
                 export_job_info_file["ExtraInfoKeyValue12"] = "EntityId=%i"% self._app.context.entity['id']
 
                 export_job_info_file["ExtraInfo5"] = export_job_info_file["UserName"]
