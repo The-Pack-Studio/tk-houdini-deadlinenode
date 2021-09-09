@@ -260,6 +260,9 @@ class TkDeadlineNodeHandler(object):
             job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("PATH", e_path_hou_only)
             env_index += 1
 
+        job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("HOUDINI_PACKAGE_DIR", os.environ.get("HOUDINI_PACKAGE_DIR"))
+        env_index += 1
+
         job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("NOZ_HIPFILE", hou.hipFile.path())
         env_index += 1
 
