@@ -54,7 +54,7 @@ class TkDeadlineNodeHandler(object):
         self._app = app
 
         # setup deadline qprocess
-        if os.environ.has_key('DEADLINE_PATH') and hou.isUIAvailable():
+        if 'DEADLINE_PATH' in os.environ and hou.isUIAvailable():
             self._process = QtCore.QProcess(hou.qt.mainWindow())
             self._process.finished.connect(self._dependecy_finished)
 
