@@ -147,8 +147,9 @@ class TkDeadlineNodeHandler(object):
     # Private methods
     
     def _dependecy_finished(self):
-        output = str(self._process.readAllStandardOutput())
-        output = output.replace("\r", "").replace("\n", "")
+        output = self._process.readAllStandardOutput()
+        output = str(output, 'UTF-8')
+        output = output.rstrip()
 
         if output != "Action was cancelled by user":
             self._dl_node.parm('dl_dependencies').set(output)
