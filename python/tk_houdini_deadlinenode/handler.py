@@ -139,7 +139,7 @@ class TkDeadlineNodeHandler(object):
 
     def deadline_dependencies(self, node):
         self._dl_node = node
-        if os.environ.has_key('DEADLINE_PATH'):
+        if 'DEADLINE_PATH' in os.environ:
             deadline_bin = os.path.join(os.environ['DEADLINE_PATH'], 'deadlinecommand')
             self._process.start(deadline_bin, ["-selectdependencies", node.parm('dl_dependencies').eval()])
 
