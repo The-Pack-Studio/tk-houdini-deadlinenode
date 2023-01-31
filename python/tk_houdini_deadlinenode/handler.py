@@ -338,13 +338,13 @@ class TkDeadlineNodeHandler(object):
 
             # Add extra values for renders to enable post jobs on deadline
             if node.type().name() in ['sgtk_geometry', 'sgtk_arnold']:
-                publish_info = {'publish_name': name,
-                            'publish_type': 'Rendered Image', 
-                            'publish_version': version, 
-                            'publish_comment': '',
-                            'publish_dependencies_paths': [], 
-                            'publish_dependencies_ids': []
-                            }
+                publish_info = {'name': name,
+                                'published_file_type': 'Rendered Image', 
+                                'version_number': version, 
+                                'comment': '',
+                                'dependency_paths': [], 
+                                'dependency_ids': []
+                                }
                 publish_info = json.dumps(publish_info)
 
                 export_job_info_file["ExtraInfoKeyValue1"] = "context=%s" % self._app.context.serialize(with_user_credentials=False, use_json=True)
