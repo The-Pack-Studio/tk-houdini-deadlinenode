@@ -299,7 +299,6 @@ class TkDeadlineNodeHandler(object):
             "IgnoreInputs": True,
             "OutputDriver": node.path(),
             "Build": "None",
-            "LocalRendering" : True,
         }
 
         if node.type().name() == 'sgtk_geometry':
