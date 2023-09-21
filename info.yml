@@ -13,32 +13,60 @@
 
 # expected fields in the configuration file for this app
 configuration:
-    dl_server_python_api_win:
+    dl_python_api_win:
         type: str
         default_value: ""
         description: >
             Path to the deadline python api install location of the main server for windows
     
-    dl_server_python_api_lnx:
+    dl_python_api_lnx:
         type: str
         default_value: ""
         description: >
             Path to the deadline python api install location of the main server for linux
 
-    dl_server_python_api_mac:
+    dl_python_api_mac:
         type: str
         default_value: ""
         description: >
             Path to the deadline python api install location of the main server for mac
 
-    dl_server_ip:
+    dl_webservice_ip:
         type: str
-        description: Ip of the deadline server
+        description: Ip or host name of the deadline web service
 
-    dl_server_port:
+    dl_webservice_http_port:
         type: int
         default_value: 8082
-        description: Port of the deadline server
+        description: Unsecure http port of the deadline web service
+
+    dl_webservice_tls_port:
+        type: int
+        default_value: 4434
+        description: Secure port of the deadline web service
+
+    dl_webservice_use_tls:
+        type: bool
+        description: A flag whether to use secure communication with the deadline web service
+        default_value: True
+
+    dl_webservice_certificates_win:
+        type: str
+        description: Windows path to the certificates needed for secure communication
+                     with the deadline web service
+        allows_empty: True
+
+    dl_webservice_certificates_lnx:
+        type: str
+        description: Linux path to the certificates needed for secure communication
+                     with the deadline web service
+        allows_empty: True
+
+    dl_webservice_certificates_mac:
+        type: str
+        description: Mac path to the certificates needed for secure communication
+                     with the deadline web service      
+        allows_empty: True
             
     work_file_template:
         type: template

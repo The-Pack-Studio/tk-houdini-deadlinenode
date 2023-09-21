@@ -35,8 +35,8 @@ class TkDeadlineNodeHandler(object):
     TK_OUT_RENDER_ROPS = ['sgtk_vm_picture', 'ar_picture']
     TK_DISK_RENDER_ROPS = ['sgtk_soho_diskfile', 'sgtk_ass_diskfile']
 
-    TK_DEFAULT_GEO_PRIORITY = 500
-    TK_DEFAULT_SIM_PRIORITY = 501
+    TK_DEFAULT_GEO_PRIORITY = 99
+    TK_DEFAULT_SIM_PRIORITY = 100
     TK_DEFAULT_RENDER_PRIORITY = 50
 
     ############################################################################
@@ -58,28 +58,12 @@ class TkDeadlineNodeHandler(object):
             self._process = QtCore.QProcess(hou.qt.mainWindow())
             self._process.finished.connect(self._dependecy_finished)
 
-        # create deadline connection
-        deadline_repo = ''
-        if sys.platform == "linux" or sys.platform == "linux2":
-            deadline_repo = self._app.get_setting("dl_server_python_api_lnx")
-        elif sys.platform == "darwin":
-            deadline_repo = self._app.get_setting("dl_server_python_api_mac")
-        elif sys.platform == "win32":
-            deadline_repo = self._app.get_setting("dl_server_python_api_win")
+        self._deadline_connect = self._deadline_api_connection()
+     
+        # cache pools and groups
+        self._deadline_pools = self._deadline_connect.Pools.GetPoolNames()
+        self._deadline_groups = self._deadline_connect.Groups.GetGroupNames()
 
-        if os.path.exists(deadline_repo):
-            sys.path.append(deadline_repo)
-
-            import Deadline.DeadlineConnect as Connect
-
-            self._deadline_connect = Connect.DeadlineCon(self._app.get_setting("dl_server_ip"), self._app.get_setting("dl_server_port"))
-
-            # cache pools and groups
-            self._deadline_pools = self._deadline_connect.Pools.GetPoolNames()
-            self._deadline_groups = self._deadline_connect.Groups.GetGroupNames()
-        else:
-            self._app.log_error('Could not find deadline repo!')
-        
 
     ############################################################################
     # methods and callbacks executed via the OTLs
@@ -145,6 +129,41 @@ class TkDeadlineNodeHandler(object):
 
     ############################################################################
     # Private methods
+
+    def _deadline_api_connection(self):
+
+        if sys.platform == "win32":
+            deadline_api_path = self._app.get_setting("dl_python_api_win")
+            deadline_certificates_path = self._app.get_setting("dl_webservice_certificates_win")
+        elif sys.platform == "linux" or sys.platform == "linux2":
+            deadline_api_path = self._app.get_setting("dl_python_api_lnx")
+            deadline_certificates_path = self._app.get_setting("dl_webservice_certificates_lnx")
+        elif sys.platform == "darwin":
+            deadline_api_path = self._app.get_setting("dl_python_api_mac")
+            deadline_certificates_path = self._app.get_setting("dl_webservice_certificates_mac")
+
+        if not os.path.exists(deadline_api_path):
+            self._app.log_error('Could not find deadline repo! in path:%s' % deadline_api_path)
+
+        sys.path.append(deadline_api_path)
+
+        # Try to import the deadline connection module
+        try:
+            import Deadline.DeadlineConnect as Connect
+        except:
+            raise Exception("ERROR : Could not import deadline 'Deadline.DeadlineConnect' from %s" % deadline_api_path)
+
+        if self._app.get_setting("dl_webservice_use_tls") == True:
+            deadline_connection = Connect.DeadlineCon(self._app.get_setting("dl_webservice_ip"), self._app.get_setting("dl_webservice_tls_port"), True, deadline_certificates_path, False)
+        else:
+            deadline_connection = Connect.DeadlineCon(self._app.get_setting("dl_webservice_ip"), self._app.get_setting("dl_webservice_http_port"))
+
+        # Check if the deadline_connection actually works
+        # this will raise an error if it doesn't work. I have found no cleaner way to check for this
+        check = deadline_connection.Groups.GetGroupNames()
+
+        return deadline_connection        
+
     
     def _dependecy_finished(self):
         output = self._process.readAllStandardOutput()
@@ -204,6 +223,8 @@ class TkDeadlineNodeHandler(object):
         priority = self.TK_DEFAULT_GEO_PRIORITY
         if node.parm('initsim') and node.parm('initsim').evalAsInt():
             priority = self.TK_DEFAULT_SIM_PRIORITY
+            if priority > 100:
+                priority = 100
 
         # Create submission info file
         job_info_file = {
