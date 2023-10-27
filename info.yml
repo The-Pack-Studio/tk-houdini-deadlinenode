@@ -75,6 +75,11 @@ configuration:
             disk.  This is used to drive the version and optionally the name of
             output files.
         fields: context, version, [name]
+
+    Nozon Preview Movie Preset:
+        type: str
+        description: Name of the nozmov preview movie preset. Must exist in the tk-multi-nozmov app configuration
+
         
 # the Shotgun fields that this app needs in order to operate correctly
 requires_shotgun_fields:

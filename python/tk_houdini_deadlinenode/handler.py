@@ -64,6 +64,11 @@ class TkDeadlineNodeHandler(object):
         self._deadline_pools = self._deadline_connect.Pools.GetPoolNames()
         self._deadline_groups = self._deadline_connect.Groups.GetGroupNames()
 
+        self.nozmov_app = self._app.engine.apps.get("tk-multi-nozmov")
+        if not self.nozmov_app:
+            self._app.log_info('ERROR: tk-multi-nozmov inside tk-houdini-deadlinenode problem: no preview movies will be created!')
+        self.nozmov_preset = self._app.get_setting("Nozon Preview Movie Preset")
+
 
     ############################################################################
     # methods and callbacks executed via the OTLs
@@ -87,17 +92,23 @@ class TkDeadlineNodeHandler(object):
         self._dl_node = node
 
         # Sometimes shotgun does not have a task weirdly enough (bug maybe)
-        if not self._app.context.task:
-            task = self._app.context.step['name']
+        if self._app.context.task:
+            task_name = self._app.context.task['name']
+            task_id = self._app.context.task['id']
         else:
-            task = self._app.context.task['name']
+            task_name = self._app.context.step['name']
+            task_id = self._app.context.step['id']
 
         # get static data
         self._session_info = {
             'department': self._app.context.step['name'],
-            'task': task,
-            'entity': self._app.context.entity['name'],
-            'project': self._app.context.project['name'],
+            'task_name': task_name,
+            'task_id': task_id,
+            'entity_name': self._app.context.entity['name'],
+            'entity_id': self._app.context.entity['id'],
+            'entity_type': self._app.context.entity['type'],
+            'project_name': self._app.context.project['name'],
+            'project_id': self._app.context.project['id'],
             'pool': self._dl_node.parm('dl_pool').evalAsString(),
             'sec_pool': self._dl_node.parm('dl_secondary_pool').evalAsString(),
             'group': self._dl_node.parm('dl_group').evalAsString(),
@@ -211,7 +222,7 @@ class TkDeadlineNodeHandler(object):
         if (work_file_template and work_file_template.validate(work_file_path)):
             version = work_file_template.get_fields(work_file_path)['version']
 
-        batch_name = 'Houdini - {} - {} - {} - v{}'.format(self._session_info['project'], self._session_info['entity'], self._session_info['task'], str(version).zfill(3))
+        batch_name = 'Houdini - {} - {} - {} - v{}'.format(self._session_info['project_name'], self._session_info['entity_name'], self._session_info['task_name'], str(version).zfill(3))
         name = '{} - {}'.format(hou.getenv('HIPNAME'), node.path())
         
         # Override for sgtk_geometry
@@ -226,6 +237,10 @@ class TkDeadlineNodeHandler(object):
             if priority > 100:
                 priority = 100
 
+
+        # generator for 'ExtraInfoKeyValueXX'
+        # ExtraInfoKeyValue = self.ExtraInfoKeyValueGenerator()
+
         # Create submission info file
         job_info_file = {
             "Plugin": "Houdini",
@@ -238,10 +253,16 @@ class TkDeadlineNodeHandler(object):
             "Priority": priority,
             "IsFrameDependent": True,
             "BatchName": batch_name,
-            "ExtraInfo0": self._session_info['task'],
-            "ExtraInfo1": self._session_info['project'],
-            "ExtraInfo2": self._session_info['entity'],
+            "ExtraInfo0": self._session_info['task_name'],
+            "ExtraInfo1": self._session_info['project_name'],
+            "ExtraInfo2": self._session_info['entity_name'],
             "ExtraInfo3": version,
+            "ExtraInfo4": "",
+            "ExtraInfo5": self._session_info['username'],
+            # next(ExtraInfoKeyValue): "EntityName=%s" % self._session_info['entity_name'],
+            # next(ExtraInfoKeyValue): "EntityId=%s" % self._session_info['entity_id'],
+            # next(ExtraInfoKeyValue): "EntityType=%s" % self._session_info['entity_type'],            
+
             }
 
         # Nozon important env vars from the running Houdini to the job's env (donat)
@@ -333,7 +354,10 @@ class TkDeadlineNodeHandler(object):
         # export job
         if export_job:
             export_type = node.type().name()
-            
+
+            # generator for 'ExtraInfoKeyValueXX'
+            ExtraInfoKeyValueExportJob = self.ExtraInfoKeyValueGenerator()
+
             # job info file
             export_job_info_file = {
                 "Name": name,
@@ -350,11 +374,13 @@ class TkDeadlineNodeHandler(object):
                 "OutputFilename0": os.path.basename(output_file),
                 "OutputDirectory0": os.path.dirname(output_file),
                 "BatchName": batch_name,
-                "ExtraInfoKeyValue0": "%s=%s" % ("ProjectDirectory", os.path.basename(self._app.sgtk.pipeline_configuration.get_path())),
-                "ExtraInfo0": self._session_info['task'],
-                "ExtraInfo1": self._session_info['project'],
-                "ExtraInfo2": self._session_info['entity'],
-                "ExtraInfo3": "{} - {} v{} - {}".format(self._session_info['entity'], self._session_info['task'], str(version).zfill(3), self._session_info['username'])
+                "ExtraInfo0": self._session_info['task_name'],
+                "ExtraInfo1": self._session_info['project_name'],
+                "ExtraInfo2": self._session_info['entity_name'],
+                "ExtraInfo3": "{} - {} v{} - {}".format(self._session_info['entity_name'], self._session_info['task_name'], str(version).zfill(3), self._session_info['username']),
+                "ExtraInfo4": "",
+                "ExtraInfo5": self._session_info['username'],
+                next(ExtraInfoKeyValueExportJob): "ProjectDirectory=%s" % os.path.basename(self._app.sgtk.pipeline_configuration.get_path()),
                 }
 
             # Add extra values for renders to enable post jobs on deadline
@@ -368,29 +394,30 @@ class TkDeadlineNodeHandler(object):
                                 }
                 publish_info = json.dumps(publish_info)
 
-                export_job_info_file["ExtraInfoKeyValue1"] = "context=%s" % self._app.context.serialize(with_user_credentials=False, use_json=True)
-                export_job_info_file["ExtraInfoKeyValue2"] = "PublishInfo=%s" % publish_info
-                export_job_info_file["ExtraInfoKeyValue3"] = "ShotgunEvent_createVersion=True"
+                export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "context=%s" % self._app.context.serialize(with_user_credentials=False, use_json=True)
+                export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "PublishInfo=%s" % publish_info
+                export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "ProjectScriptFolder=%s" % os.path.join(self._app.sgtk.pipeline_configuration.get_config_location(), "hooks", "tk-multi-publish2", "nozonpub")
+                export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "EntityType=%s" % self._session_info['entity_type']
+                export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "EntityId=%s" % self._session_info['entity_id']
+                export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "EntityName=%s" % self._session_info['entity_name']
+                export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "ProjectId=%i" % self._app.context.project['id']
+                export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "TaskId=%i" % self._session_info['task_id']
+                export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "FrameRate=%s" % hou.fps()
                 
-                export_job_info_file["ExtraInfoKeyValue4"] = "ProjectScriptFolder=%s" % os.path.join(self._app.sgtk.pipeline_configuration.get_config_location(), "hooks", "tk-multi-publish2", "nozonpub")
-                export_job_info_file["ExtraInfoKeyValue5"] = "NozCreateSGMovie=True"
-                export_job_info_file["ExtraInfoKeyValue6"] = "UploadSGMovie=True"
-                export_job_info_file["ExtraInfoKeyValue7"] = "FrameRate=%s" % hou.fps()
-                export_job_info_file["ExtraInfoKeyValue8"] = "NozMovSettingsPreset=3d"
-                
-                export_job_info_file["ExtraInfoKeyValue9"] = "EntityType=%s" % self._session_info['task']
-                export_job_info_file["ExtraInfoKeyValue10"] = "ProjectId=%i" % self._app.context.project['id']
 
-                # Sometimes shotgun does not have a task weirdly enough (bug maybe)
-                if self._app.context.task:
-                    task_id = self._app.context.task['id']
-                else:
-                    task_id = self._app.context.step['id']
+                if self.nozmov_app:
+                    export_job_info_file["EventOptIns"] = "NozMov2EventPlugin"
+                    movie_path = self.nozmov_app.calc_output_filepath(output_file, self.nozmov_preset, publish_hook=self._app)
+                    nozmov = [ {"preset_name":self.nozmov_preset, "path": movie_path, "first_frame": frame_range[0],
+                                            "last_frame": frame_range[1], "upload": True, "add_audio": None} ]
+                    nozmovs = {"NozMov0": nozmov}
+                    nozmovs = json.dumps(nozmovs)
+                    #### Note : leaving colorspace information undefined
+                    # TODO : find if there's a way in Houdini to find the render colorspace of the hip
+                    export_job_info_file[next(ExtraInfoKeyValueExportJob)] = f"NozMovs={nozmovs}"
+                    export_job_info_file[next(ExtraInfoKeyValueExportJob)] = f"NozMovDeadlineEventScript={self.nozmov_app.get_setting('deadline_event_script')}"
+                    export_job_info_file[next(ExtraInfoKeyValueExportJob)] = f"NozMovDeadlinePluginScript={self.nozmov_app.get_setting('deadline_plugin_script')}"
 
-                export_job_info_file["ExtraInfoKeyValue11"] = "TaskId=%i" % task_id
-                export_job_info_file["ExtraInfoKeyValue12"] = "EntityId=%i"% self._app.context.entity['id']
-
-                export_job_info_file["ExtraInfo5"] = export_job_info_file["UserName"]
 
             if "sgtk_mantra" in export_type:
                 export_job_info_file["Plugin"] = "Mantra"
@@ -422,3 +449,11 @@ class TkDeadlineNodeHandler(object):
             return (int(node_range[0]), int(node_range[1]), int(node_range[2]))
         else:
             return (0, 0, 1)
+
+
+    def ExtraInfoKeyValueGenerator(self):
+        # Utility function to generate ExtraInfoKeyValueX strings
+        count = 0
+        while True:
+            yield "ExtraInfoKeyValue{:d}".format(count)
+            count += 1
