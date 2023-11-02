@@ -58,8 +58,19 @@ class TkDeadlineNodeHandler(object):
             self._process = QtCore.QProcess(hou.qt.mainWindow())
             self._process.finished.connect(self._dependecy_finished)
 
-        self._deadline_connect = self._deadline_api_connection()
-     
+        fw = sgtk.platform.get_framework("tk-framework-deadline")
+        self._deadline_connect = fw.deadline_connection()        
+
+        # Create a pool with the name of the project, if necessary
+        project_pool = self._app.context.project['name'].replace(" ", "_")
+        if not project_pool in self._deadline_connect.Pools.GetPoolNames():
+            pool_create = self._deadline_connect.Pools.AddPool(project_pool)
+            if pool_create == "Success":
+                self._app.log_debug(f"Created new deadline pool: {project_pool}")
+
+
+        # TODO : set the 'correct' project pool and sec pool on the Houdini node
+
         # cache pools and groups
         self._deadline_pools = self._deadline_connect.Pools.GetPoolNames()
         self._deadline_groups = self._deadline_connect.Groups.GetGroupNames()
@@ -140,41 +151,6 @@ class TkDeadlineNodeHandler(object):
 
     ############################################################################
     # Private methods
-
-    def _deadline_api_connection(self):
-
-        if sys.platform == "win32":
-            deadline_api_path = self._app.get_setting("dl_python_api_win")
-            deadline_certificates_path = self._app.get_setting("dl_webservice_certificates_win")
-        elif sys.platform == "linux" or sys.platform == "linux2":
-            deadline_api_path = self._app.get_setting("dl_python_api_lnx")
-            deadline_certificates_path = self._app.get_setting("dl_webservice_certificates_lnx")
-        elif sys.platform == "darwin":
-            deadline_api_path = self._app.get_setting("dl_python_api_mac")
-            deadline_certificates_path = self._app.get_setting("dl_webservice_certificates_mac")
-
-        if not os.path.exists(deadline_api_path):
-            self._app.log_error('Could not find deadline repo! in path:%s' % deadline_api_path)
-
-        sys.path.append(deadline_api_path)
-
-        # Try to import the deadline connection module
-        try:
-            import Deadline.DeadlineConnect as Connect
-        except:
-            raise Exception("ERROR : Could not import deadline 'Deadline.DeadlineConnect' from %s" % deadline_api_path)
-
-        if self._app.get_setting("dl_webservice_use_tls") == True:
-            deadline_connection = Connect.DeadlineCon(self._app.get_setting("dl_webservice_ip"), self._app.get_setting("dl_webservice_tls_port"), True, deadline_certificates_path, False)
-        else:
-            deadline_connection = Connect.DeadlineCon(self._app.get_setting("dl_webservice_ip"), self._app.get_setting("dl_webservice_http_port"))
-
-        # Check if the deadline_connection actually works
-        # this will raise an error if it doesn't work. I have found no cleaner way to check for this
-        check = deadline_connection.Groups.GetGroupNames()
-
-        return deadline_connection        
-
     
     def _dependecy_finished(self):
         output = self._process.readAllStandardOutput()
@@ -238,9 +214,6 @@ class TkDeadlineNodeHandler(object):
                 priority = 100
 
 
-        # generator for 'ExtraInfoKeyValueXX'
-        # ExtraInfoKeyValue = self.ExtraInfoKeyValueGenerator()
-
         # Create submission info file
         job_info_file = {
             "Plugin": "Houdini",
@@ -259,10 +232,6 @@ class TkDeadlineNodeHandler(object):
             "ExtraInfo3": version,
             "ExtraInfo4": "",
             "ExtraInfo5": self._session_info['username'],
-            # next(ExtraInfoKeyValue): "EntityName=%s" % self._session_info['entity_name'],
-            # next(ExtraInfoKeyValue): "EntityId=%s" % self._session_info['entity_id'],
-            # next(ExtraInfoKeyValue): "EntityType=%s" % self._session_info['entity_type'],            
-
             }
 
         # Nozon important env vars from the running Houdini to the job's env (donat)
