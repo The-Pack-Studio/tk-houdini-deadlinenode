@@ -279,6 +279,11 @@ class TkDeadlineNodeHandler(object):
         env_index += 1
 
         job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("context", self._app.context.serialize(with_user_credentials=False, use_json=True))
+        env_index += 1
+
+        job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("OCIO", hou.Color.ocio_configPath())
+
+
 
         dependencies.extend(self._session_info['dependencies'])
         for index, dependency in enumerate(dependencies):
