@@ -12,6 +12,7 @@
 import os
 import json
 import sys
+import platform
 
 # houdini
 import hou
@@ -27,13 +28,6 @@ class TkDeadlineNodeHandler(object):
 
     ############################################################################
     # Class data
-
-    TK_SUP_GEO_ROPS = ['sgtk_geometry']
-    TK_OUT_GEO_ROPS = ['sopoutput']
-
-    TK_SUP_RENDER_ROPS = ['sgtk_mantra', 'sgtk_arnold']
-    TK_OUT_RENDER_ROPS = ['sgtk_vm_picture', 'ar_picture']
-    TK_DISK_RENDER_ROPS = ['sgtk_soho_diskfile', 'sgtk_ass_diskfile']
 
     TK_DEFAULT_GEO_PRIORITY = 99
     TK_DEFAULT_SIM_PRIORITY = 100
@@ -62,11 +56,11 @@ class TkDeadlineNodeHandler(object):
         self._deadline_connect = fw.deadline_connection()        
 
         # Create a pool with the name of the project, if necessary
-        project_pool = self._app.context.project['name'].replace(" ", "_")
-        if not project_pool in self._deadline_connect.Pools.GetPoolNames():
-            pool_create = self._deadline_connect.Pools.AddPool(project_pool)
-            if pool_create == "Success":
-                self._app.log_debug(f"Created new deadline pool: {project_pool}")
+        # project_pool = self._app.context.project['name'].replace(" ", "_")
+        # if not project_pool in self._deadline_connect.Pools.GetPoolNames():
+        #     pool_create = self._deadline_connect.Pools.AddPool(project_pool)
+        #     if pool_create == "Success":
+        #         self._app.log_debug(f"Created new deadline pool: {project_pool}")
 
 
         # TODO : set the 'correct' project pool and sec pool on the Houdini node
@@ -143,7 +137,7 @@ class TkDeadlineNodeHandler(object):
         else:
             self._app.log_info('Sgtk Deadline node locked, will not submit any jobs!')
 
-    def deadline_dependencies(self, node):
+    def deadline_dependencies(self, node):   #### is this used somewhere in the OTL ??????????????????
         self._dl_node = node
         if 'DEADLINE_PATH' in os.environ:
             deadline_bin = os.path.join(os.environ['DEADLINE_PATH'], 'deadlinecommand')
@@ -171,8 +165,8 @@ class TkDeadlineNodeHandler(object):
                         
                     dep_job_ids.extend(self._dl_submitted_ids[dep_node.path()])
                     
-            if not render_node.isBypassed() and render_node.type().name() in (self.TK_SUP_GEO_ROPS + self.TK_SUP_RENDER_ROPS):
-                if render_node.type().name() in ['sgtk_geometry', 'sgtk_arnold']:
+            if not render_node.isBypassed() and render_node.type().name() in ['sgtk_geometry', 'sgtk_arnold', 'sgtk_mantra', 'shotgrid_arnold_usd_rop']:
+                if render_node.type().name() in ['sgtk_geometry', 'sgtk_arnold', 'shotgrid_arnold_usd_rop']: 
                     render_node.hm().pre_render(render_node)
                 
                 dep_id = self._submit_dl_job(render_node, dep_job_ids)
@@ -181,16 +175,29 @@ class TkDeadlineNodeHandler(object):
                 self._dl_submitted_ids[render_node.path()] = dep_job_ids
 
     def _submit_dl_job(self, node, dependencies):
+
         export_job = False
-        if node.type().name() in self.TK_SUP_RENDER_ROPS:
+        if node.type().name() in ["sgtk_arnold", "sgtk_mantra", "shotgrid_arnold_usd_rop"]:
             export_job = True
 
-            disk_file = node.parm(self.TK_DISK_RENDER_ROPS[self.TK_SUP_RENDER_ROPS.index(node.type().name())]).evalAtFrame(0)
-            output_file = node.parm(self.TK_OUT_RENDER_ROPS[self.TK_SUP_RENDER_ROPS.index(node.type().name())]).unexpandedString()
-        else:
-            output_file = node.parm(self.TK_OUT_GEO_ROPS[self.TK_SUP_GEO_ROPS.index(node.type().name())]).evalAsString()
-        
-        output_file = output_file.replace('$F4', '####')
+            if node.type().name() == "sgtk_arnold":
+                # source_file = ass
+                source_file = node.parm("sgtk_ass_diskfile").evalAtFrame(0)
+                image_paths = [node.parm("ar_picture").unexpandedString()]
+
+            if node.type().name() == "sgtk_mantra":
+                source_file = node.parm("sgtk_soho_diskfile").evalAtFrame(0)
+                image_paths = [node.parm("sgtk_vm_picture").unexpandedString()]
+
+            if node.type().name() == "shotgrid_arnold_usd_rop":
+
+                usdapp = self._app.engine.apps.get("tk-houdini-usdarnoldnode")
+                source_file = usdapp.get_usd_output_path(node)
+                image_paths = usdapp.get_image_output_paths(node)
+
+        elif node.type().name() == "sgtk_geometry":
+            output_file = node.parm("sopoutput").evalAsString()
+            output_file = output_file.replace('$F4', '####')
 
         # Configure job name and version
         work_file_path = hou.hipFile.path()
@@ -201,8 +208,8 @@ class TkDeadlineNodeHandler(object):
         batch_name = 'Houdini - {} - {} - {} - v{}'.format(self._session_info['project_name'], self._session_info['entity_name'], self._session_info['task_name'], str(version).zfill(3))
         name = '{} - {}'.format(hou.getenv('HIPNAME'), node.path())
         
-        # Override for sgtk_geometry
-        if node.type().name() in ['sgtk_geometry', 'sgtk_arnold']:
+        # Override version by value stored in 'ver' parm
+        if node.type().name() in ['sgtk_geometry', 'sgtk_arnold', 'shotgrid_arnold_usd_rop']:
             version = node.parm('ver').evalAsInt()
             name = '{} v{}'.format(name, str(version).zfill(3))
 
@@ -212,7 +219,6 @@ class TkDeadlineNodeHandler(object):
             priority = self.TK_DEFAULT_SIM_PRIORITY
             if priority > 100:
                 priority = 100
-
 
         # Create submission info file
         job_info_file = {
@@ -225,6 +231,7 @@ class TkDeadlineNodeHandler(object):
             "Group": self._session_info['group'],
             "Priority": priority,
             "IsFrameDependent": True,
+            "MachineName": platform.node(),
             "BatchName": batch_name,
             "ExtraInfo0": self._session_info['task_name'],
             "ExtraInfo1": self._session_info['project_name'],
@@ -241,27 +248,23 @@ class TkDeadlineNodeHandler(object):
                     'HOUDINI_OTLSCAN_PATH',
                     'PYTHONPATH']
 
+        # generator for 'EnvironmentKeyValueXX'
+        EnvironmentKeyValueJob = self.EnvironmentKeyValueGenerator()
         # LOOP THROUGH THE VARS AND ADD A LINE TO THE JOB FILE FOR EACH DEFINED ENVIRONMENT VARIABLE.
-        env_index = 0
         for env_var in env_vars:
             #CHECK THAT THE ENVIRONMENT VARIABLE HAS BEEN SET (WE DON'T WANT TO PASS 'NONE' TYPE VALUES TO DEADLINE AS THIS CAN CAUSE PROBLEMS)
             if os.environ.get(env_var) is not None:
-                job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % (env_var, os.environ.get(env_var))
-                env_index += 1
+                job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % (env_var, os.environ.get(env_var))
         # Shotgun location
         if os.environ.get("TANK_CURRENT_PC") is not None:
-            job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("NOZ_TK_CONFIG_PATH", os.environ.get("TANK_CURRENT_PC"))
-            env_index += 1
-
+            job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("NOZ_TK_CONFIG_PATH", os.environ.get("TANK_CURRENT_PC"))
         # getting rid of tk-houdini in the Houdini_Path env var
         if os.environ.get("HOUDINI_PATH") is not None:
             hou_path = os.environ.get("HOUDINI_PATH")
             hou_path_list = hou_path.split(";")
             hou_path_list_no_sgtk = [x for x in hou_path_list if 'tk-houdini' not in x]
             hou_path_no_sgtk = ";".join(hou_path_list_no_sgtk)
-            job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("HOUDINI_PATH", hou_path_no_sgtk)
-            env_index += 1
-
+            job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("HOUDINI_PATH", hou_path_no_sgtk)
         # parse the PATH var to only take houdini stuff
         if os.environ.get("PATH") is not None: 
             e_path = os.environ.get("PATH")
@@ -269,20 +272,11 @@ class TkDeadlineNodeHandler(object):
             # we might miss stuff here !!!
             e_path_hou_only_list = [x for x in e_path_list if 'houdini' in x.lower()]
             e_path_hou_only = ";".join(e_path_hou_only_list)
-            job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("PATH", e_path_hou_only)
-            env_index += 1
-
-        job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("HOUDINI_PACKAGE_DIR", os.environ.get("HOUDINI_PACKAGE_DIR"))
-        env_index += 1
-
-        job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("NOZ_HIPFILE", hou.hipFile.path())
-        env_index += 1
-
-        job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("context", self._app.context.serialize(with_user_credentials=False, use_json=True))
-        env_index += 1
-
-        job_info_file['EnvironmentKeyValue%d' % env_index] = "%s=%s" % ("OCIO", hou.Color.ocio_configPath())
-
+            job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("PATH", e_path_hou_only)
+        job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("HOUDINI_PACKAGE_DIR", os.environ.get("HOUDINI_PACKAGE_DIR"))
+        job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("NOZ_HIPFILE", hou.hipFile.path())
+        job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("context", self._app.context.serialize(with_user_credentials=False, use_json=True))
+        job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("OCIO", hou.Color.ocio_configPath())
 
 
         dependencies.extend(self._session_info['dependencies'])
@@ -300,18 +294,24 @@ class TkDeadlineNodeHandler(object):
         elif node.type().name() == 'sgtk_geometry':
             if node.parm('types').evalAsString() == 'abc' and node.parm('abcSingleFile').evalAsInt():
                 chunk_size = frame_range[1] - frame_range[0] + 1
-        
+            if node.parm('types').evalAsString() == 'usd' and node.parm('usdSingleFile').evalAsInt(): ############### ????
+                chunk_size = frame_range[1] - frame_range[0] + 1
+        elif node.type().name() == 'shotgrid_arnold_usd_rop':
+            if not node.parm("fileperframe").eval():
+                chunk_size = frame_range[1] - frame_range[0] + 1
+
+
         job_info_file['ChunkSize'] = chunk_size
         
         # output
         if export_job:
-            job_info_file['OutputDirectory0'] = os.path.dirname(disk_file)
+            job_info_file['OutputDirectory0'] = os.path.dirname(source_file)
         else:
             job_info_file['OutputFilename0'] = output_file
 
-        ver = hou.applicationVersion()
+        hou_ver = hou.applicationVersion()
         plugin_info_file = {
-            "Version": "%s.%s" % (ver[0], ver[1]),
+            "Version": "%s.%s" % (hou_ver[0], hou_ver[1]),
             "IgnoreInputs": True,
             "OutputDriver": node.path(),
             "Build": "None",
@@ -323,11 +323,11 @@ class TkDeadlineNodeHandler(object):
         else:
             plugin_info_file["SceneFile"] = hou.hipFile.path()
 
+        # submit to deadline
         render_job_id = self._deadline_connect.Jobs.SubmitJob(job_info_file, plugin_info_file)["_id"]
 
         # export job
         if export_job:
-            export_type = node.type().name()
 
             # generator for 'ExtraInfoKeyValueXX'
             ExtraInfoKeyValueExportJob = self.ExtraInfoKeyValueGenerator()
@@ -343,10 +343,9 @@ class TkDeadlineNodeHandler(object):
                 "JobDependencies": render_job_id,
                 "Priority": self.TK_DEFAULT_RENDER_PRIORITY,
                 "IsFrameDependent": True,
+                "MachineName": platform.node(),
                 "Frames": "%s-%s" % (frame_range[0], frame_range[1]),
                 "ChunkSize": 1,
-                "OutputFilename0": os.path.basename(output_file),
-                "OutputDirectory0": os.path.dirname(output_file),
                 "BatchName": batch_name,
                 "ExtraInfo0": self._session_info['task_name'],
                 "ExtraInfo1": self._session_info['project_name'],
@@ -357,8 +356,13 @@ class TkDeadlineNodeHandler(object):
                 next(ExtraInfoKeyValueExportJob): "ProjectDirectory=%s" % os.path.basename(self._app.sgtk.pipeline_configuration.get_path()),
                 }
 
+            for index, image_path in enumerate(image_paths):
+                image_path = image_path.replace("%04d", "####")
+                export_job_info_file["OutputFilename{}".format(index)] = os.path.basename(image_path)  
+                export_job_info_file["OutputDirectory{}".format(index)] = os.path.dirname(image_path)  
+
             # Add extra values for renders to enable post jobs on deadline
-            if node.type().name() in ['sgtk_geometry', 'sgtk_arnold']:
+            if node.type().name() in ['sgtk_geometry', 'sgtk_arnold', 'shotgrid_arnold_usd_rop']:
                 publish_info = {'name': name,
                                 'published_file_type': 'Rendered Image', 
                                 'version_number': version, 
@@ -381,7 +385,7 @@ class TkDeadlineNodeHandler(object):
 
                 if self.nozmov_app:
                     export_job_info_file["EventOptIns"] = "NozMov2EventPlugin"
-                    movie_path = self.nozmov_app.calc_output_filepath(output_file, self.nozmov_preset, publish_hook=self._app)
+                    movie_path = self.nozmov_app.calc_output_filepath(image_paths[0], self.nozmov_preset, publish_hook=self._app)
                     nozmov = [ {"preset_name":self.nozmov_preset, "path": movie_path, "first_frame": frame_range[0],
                                             "last_frame": frame_range[1], "upload": True, "add_audio": None} ]
                     nozmovs = {"NozMov0": nozmov}
@@ -393,23 +397,24 @@ class TkDeadlineNodeHandler(object):
                     export_job_info_file[next(ExtraInfoKeyValueExportJob)] = f"NozMovDeadlinePluginScript={self.nozmov_app.get_setting('deadline_plugin_script')}"
 
 
-            if "sgtk_mantra" in export_type:
+            if "sgtk_mantra" in node.type().name():
                 export_job_info_file["Plugin"] = "Mantra"
-            elif "sgtk_arnold" in export_type:
+            elif "sgtk_arnold" in node.type().name():
                 export_job_info_file["Plugin"] = "Arnold"
+            elif "shotgrid_arnold_usd_rop" in node.type().name():
+                export_job_info_file["Plugin"] = "ArnoldUSD"
 
             # Shotgun location
             export_job_info_file["EnvironmentKeyValue0"] = "NOZ_TK_CONFIG_PATH=%s" % self._app.sgtk.pipeline_configuration.get_path()
 
             # plugin info file
             export_plugin_info_file = { "CommandLineOptions": "" }
-            if export_type == "sgtk_mantra":
-                export_plugin_info_file["SceneFile"] = disk_file
-
+            if node.type().name() == "sgtk_mantra":
+                export_plugin_info_file["SceneFile"] = source_file
                 major_version, minor_version = hou.applicationVersion()[:2]
                 export_plugin_info_file["Version"] = "%s.%s" % (major_version, minor_version)
-            elif export_type == "sgtk_arnold":
-                export_plugin_info_file["InputFile"] = disk_file
+            elif node.type().name() in ["sgtk_arnold", "shotgrid_arnold_usd_rop"]:
+                export_plugin_info_file["InputFile"] = source_file
                 export_plugin_info_file["Verbose"] = 4
 
             export_job_id = self._deadline_connect.Jobs.SubmitJob(export_job_info_file, export_plugin_info_file)["_id"]
@@ -418,9 +423,12 @@ class TkDeadlineNodeHandler(object):
         return render_job_id
     
     def _get_frame_range(self, node):
-        if node.parm('trange').evalAsString() == 'normal':
+        if node.parm('trange').evalAsString() == 'normal': # = 'Render Specific Frame Range'
             node_range = node.parmTuple('f').evalAsFloats()
             return (int(node_range[0]), int(node_range[1]), int(node_range[2]))
+        elif node.parm('trange').evalAsString() == 'off': # = 'Render Current Frame'
+            curr_frame = int(hou.frame())
+            return (curr_frame, curr_frame, 1)
         else:
             return (0, 0, 1)
 
@@ -430,4 +438,11 @@ class TkDeadlineNodeHandler(object):
         count = 0
         while True:
             yield "ExtraInfoKeyValue{:d}".format(count)
+            count += 1
+
+    def EnvironmentKeyValueGenerator(self):
+        # Utility function to generate ExtraInfoKeyValueX strings
+        count = 0
+        while True:
+            yield "EnvironmentKeyValue{:d}".format(count)
             count += 1
