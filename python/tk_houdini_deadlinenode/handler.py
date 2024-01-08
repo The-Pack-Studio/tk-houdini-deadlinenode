@@ -183,7 +183,9 @@ class TkDeadlineNodeHandler(object):
             if node.type().name() == "sgtk_arnold":
                 # source_file = ass
                 source_file = node.parm("sgtk_ass_diskfile").evalAtFrame(0)
-                image_paths = [node.parm("ar_picture").unexpandedString()]
+                image_path = node.parm("ar_picture").unexpandedString()
+                image_path = image_path.replace('$F4', '####')
+                image_paths = [image_path]
 
             if node.type().name() == "sgtk_mantra":
                 source_file = node.parm("sgtk_soho_diskfile").evalAtFrame(0)
