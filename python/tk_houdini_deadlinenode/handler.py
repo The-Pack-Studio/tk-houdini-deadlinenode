@@ -299,7 +299,8 @@ class TkDeadlineNodeHandler(object):
             if node.parm('types').evalAsString() == 'usd' and node.parm('usdSingleFile').evalAsInt(): ############### ????
                 chunk_size = frame_range[1] - frame_range[0] + 1
         elif node.type().name() == 'shotgrid_arnold_usd_rop':
-            if not node.parm("fileperframe").eval():
+            usdnode = node.node('usd')
+            if not usdnode.parm("fileperframe").eval():
                 chunk_size = frame_range[1] - frame_range[0] + 1
 
 
