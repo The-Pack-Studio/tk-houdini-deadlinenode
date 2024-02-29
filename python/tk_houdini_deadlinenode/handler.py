@@ -101,8 +101,10 @@ class TkDeadlineNodeHandler(object):
             task_name = self._app.context.task['name']
             task_id = self._app.context.task['id']
         else:
-            task_name = self._app.context.step['name']
-            task_id = self._app.context.step['id']
+            hou.ui.setStatusMessage("No task in the context of the deadlinenode app! Aborting submit", hou.severityType.Error)
+            self._app.log_error('No task in the apps context : %s' % self._app.context.to_dict() )
+
+            return None
 
         # get static data
         self._session_info = {
@@ -314,7 +316,7 @@ class TkDeadlineNodeHandler(object):
 
         hou_ver = hou.applicationVersion()
         plugin_info_file = {
-            "Version": "%s.%s" % (hou_ver[0], hou_ver[1]),
+            "Version": "%s.%s.%s" % (hou_ver[0], hou_ver[1], hou_ver[2]),
             "IgnoreInputs": True,
             "OutputDriver": node.path(),
             "Build": "None",
