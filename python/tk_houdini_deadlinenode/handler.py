@@ -380,6 +380,7 @@ class TkDeadlineNodeHandler(object):
                 export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "context=%s" % self._app.context.serialize(with_user_credentials=False, use_json=True)
                 export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "PublishInfo=%s" % publish_info
                 export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "ProjectScriptFolder=%s" % os.path.join(self._app.sgtk.pipeline_configuration.get_config_location(), "hooks", "tk-multi-publish2", "nozonpub")
+                export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "ProjectName=%s" % self._app.context.project['name']
                 export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "EntityType=%s" % self._session_info['entity_type']
                 export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "EntityId=%s" % self._session_info['entity_id']
                 export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "EntityName=%s" % self._session_info['entity_name']
