@@ -13,6 +13,7 @@ import os
 import json
 import sys
 import platform
+from datetime import datetime
 
 # houdini
 import hou
@@ -209,7 +210,12 @@ class TkDeadlineNodeHandler(object):
         if (work_file_template and work_file_template.validate(work_file_path)):
             version = work_file_template.get_fields(work_file_path)['version']
 
-        batch_name = 'Houdini - {} - {} - {} - v{}'.format(self._session_info['project_name'], self._session_info['entity_name'], self._session_info['task_name'], str(version).zfill(3))
+        batch_name = 'Houdini - {} - {} - {} - v{} ({})'.format(self._session_info['project_name'],
+                                                            self._session_info['entity_name'],
+                                                            self._session_info['task_name'],
+                                                            str(version).zfill(3),
+                                                            datetime.today().strftime("%Y-%m-%d")
+                                                            )
         name = '{} - {}'.format(hou.getenv('HIPNAME'), node.path())
         
         # Override version by value stored in 'ver' parm
