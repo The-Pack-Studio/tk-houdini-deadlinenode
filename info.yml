@@ -25,6 +25,11 @@ configuration:
         type: str
         description: Name of the nozmov preview movie preset. Must exist in the tk-multi-nozmov app configuration
 
+    deadline_houdini_render_script:
+        type: config_path
+        description: Path to the script used by the deadline houdini plugin to execute the render
+
+
 # the Shotgun fields that this app needs in order to operate correctly
 requires_shotgun_fields:
 

@@ -70,6 +70,8 @@ class TkDeadlineNodeHandler(object):
         self._deadline_pools = self._deadline_connect.Pools.GetPoolNames()
         self._deadline_groups = self._deadline_connect.Groups.GetGroupNames()
 
+        self._deadline_houdini_render_script  = self._app.get_setting("deadline_houdini_render_script")
+
         self.nozmov_app = self._app.engine.apps.get("tk-multi-nozmov")
         if not self.nozmov_app:
             self._app.log_info('ERROR: tk-multi-nozmov inside tk-houdini-deadlinenode problem: no preview movies will be created!')
@@ -251,7 +253,7 @@ class TkDeadlineNodeHandler(object):
 
         # Create submission info file
         job_info_file = {
-            "Plugin": "Houdini",
+            "Plugin": "Houdini2",
             "UserName": self._session_info['username'],
             "Name": name,
             "Department": self._session_info['department'],
@@ -270,17 +272,11 @@ class TkDeadlineNodeHandler(object):
             "ExtraInfo5": self._session_info['username'],
             }
 
-        # Nozon important env vars from the running Houdini to the job's env (donat)
-        env_vars = ['RLM_LICENSE',
-                    'SOLIDANGLE_LICENSE',
-                    'ADSKFLEX_LICENSE_FILE',
-                    'HOUDINI_OTLSCAN_PATH',
-                    'PYTHONPATH']
 
         # generator for 'EnvironmentKeyValueXX'
         EnvironmentKeyValueJob = self.EnvironmentKeyValueGenerator()
         # LOOP THROUGH THE VARS AND ADD A LINE TO THE JOB FILE FOR EACH DEFINED ENVIRONMENT VARIABLE.
-        for env_var in env_vars:
+        for env_var in ['ADSKFLEX_LICENSE_FILE', 'HOUDINI_OTLSCAN_PATH', 'PYTHONPATH']:
             #CHECK THAT THE ENVIRONMENT VARIABLE HAS BEEN SET (WE DON'T WANT TO PASS 'NONE' TYPE VALUES TO DEADLINE AS THIS CAN CAUSE PROBLEMS)
             if os.environ.get(env_var) is not None:
                 job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % (env_var, os.environ.get(env_var))
@@ -290,17 +286,17 @@ class TkDeadlineNodeHandler(object):
         # getting rid of tk-houdini in the Houdini_Path env var
         if os.environ.get("HOUDINI_PATH") is not None:
             hou_path = os.environ.get("HOUDINI_PATH")
-            hou_path_list = hou_path.split(";")
+            hou_path_list = hou_path.split(os.pathsep)
             hou_path_list_no_sgtk = [x for x in hou_path_list if 'tk-houdini' not in x]
-            hou_path_no_sgtk = ";".join(hou_path_list_no_sgtk)
+            hou_path_no_sgtk = os.pathsep.join(hou_path_list_no_sgtk)
             job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("HOUDINI_PATH", hou_path_no_sgtk)
         # parse the PATH var to only take houdini stuff
         if os.environ.get("PATH") is not None: 
             e_path = os.environ.get("PATH")
-            e_path_list = e_path.split(";")
+            e_path_list = e_path.split(os.pathsep)
             # we might miss stuff here !!!
             e_path_hou_only_list = [x for x in e_path_list if 'houdini' in x.lower()]
-            e_path_hou_only = ";".join(e_path_hou_only_list)
+            e_path_hou_only = os.pathsep.join(e_path_hou_only_list)
             job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("PATH", e_path_hou_only)
         job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("HOUDINI_PACKAGE_DIR", os.environ.get("HOUDINI_PACKAGE_DIR"))
         job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("NOZ_HIPFILE", hou.hipFile.path())
@@ -345,19 +341,36 @@ class TkDeadlineNodeHandler(object):
             "IgnoreInputs": True,
             "OutputDriver": node.path(),
             "Build": "None",
+            "LocalRendering": True,
         }
 
-        if node.type().name() == 'sgtk_geometry':
+        if node.type().name() in ['sgtk_geometry', 'sgtk_arnold', 'shotgrid_arnold_usd_rop']:
             path = node.hm().app().handler.get_backup_file(node)
             plugin_info_file["SceneFile"] = path
-        else:
+        else: 
             plugin_info_file["SceneFile"] = hou.hipFile.path()
+
+        plugin_info_file["Script"] = self._deadline_houdini_render_script
 
         # submit to deadline
         render_job_id = self._deadline_connect.Jobs.SubmitJob(job_info_file, plugin_info_file)["_id"]
 
         # export job
         if export_job:
+
+            group = None
+            if node.type().name() == 'sgtk_arnold':
+                group = "arnold"
+            elif node.type().name() == 'shotgrid_arnold_usd_rop':
+                lop_node_path = node.parm('loppath').eval()
+                lop_node = hou.node(lop_node_path)
+                if lop_node.parm('render_using'):
+                    render_using = lop_node.parm('render_using').evalAsString()
+                    if render_using == 'use_husk':
+                        group = "husk"
+                else:
+                    group = "arnold"
+
 
             # generator for 'ExtraInfoKeyValueXX'
             ExtraInfoKeyValueExportJob = self.ExtraInfoKeyValueGenerator()
@@ -369,7 +382,7 @@ class TkDeadlineNodeHandler(object):
                 "Department": self._session_info['department'],
                 "Pool": self._session_info['pool'],
                 "SecondaryPool": self._session_info['sec_pool'],
-                "Group": "arnold",
+                "Group": group,
                 "JobDependencies": render_job_id,
                 "Priority": self.TK_DEFAULT_RENDER_PRIORITY,
                 "IsFrameDependent": True,
@@ -433,24 +446,49 @@ class TkDeadlineNodeHandler(object):
             elif "sgtk_arnold" in node.type().name():
                 export_job_info_file["Plugin"] = "Arnold"
             elif "shotgrid_arnold_usd_rop" in node.type().name():
-                export_job_info_file["Plugin"] = "ArnoldUSD"
+                lop_node_path = node.parm('loppath').eval()
+                lop_node = hou.node(lop_node_path)
+                if lop_node.parm('render_using'):
+                    render_using = lop_node.parm('render_using').evalAsString()
+                    if render_using == 'use_husk':
+                        export_job_info_file["Plugin"] = "Husk"
+                else:
+                    export_job_info_file["Plugin"] = "ArnoldUSD"
 
-            # Shotgun location
-            export_job_info_file["EnvironmentKeyValue0"] = "NOZ_TK_CONFIG_PATH=%s" % self._app.sgtk.pipeline_configuration.get_path()
+
+            # Environment Variables on export job
+            # Copying all the env vars from the main job to the export job :
+            # mandatory for husk jobs although for the other types of job only NOZ_TK_CONFIG_PATH is strictly necessary
+            ExEnvKeyValueJob = self.EnvironmentKeyValueGenerator()
+            for job_key, job_value in job_info_file.items():
+                if "EnvironmentKeyValue" in job_key:
+                    export_job_info_file[next(ExEnvKeyValueJob)] = job_value
+
 
             # plugin info file
-            export_plugin_info_file = { "CommandLineOptions": "" }
+            export_plugin_info_file = {}
+
+            major_version, minor_version, build_version = hou.applicationVersion()
+
             if node.type().name() == "sgtk_mantra":
                 export_plugin_info_file["SceneFile"] = source_file
-                major_version, minor_version = hou.applicationVersion()[:2]
                 export_plugin_info_file["Version"] = "%s.%s" % (major_version, minor_version)
-            elif node.type().name() in ["sgtk_arnold", "shotgrid_arnold_usd_rop"]:
+
+            elif node.type().name() ==  "sgtk_arnold":
                 export_plugin_info_file["InputFile"] = source_file
                 export_plugin_info_file["Verbose"] = 4
+
+            elif node.type().name() == "shotgrid_arnold_usd_rop":
+                export_plugin_info_file["InputFile"] = source_file
+                export_plugin_info_file["Version"] = "%s.%s.%s" % (major_version, minor_version, build_version)
+                export_plugin_info_file["Verbose"] = 2
+                export_plugin_info_file["Renderer"] = "Arnold"
+                # export_plugin_info_file["ResolverContextFile"] = "" # TBD
 
             export_job_id = self._deadline_connect.Jobs.SubmitJob(export_job_info_file, export_plugin_info_file)["_id"]
 
             return export_job_id
+
         return render_job_id
     
     def _get_frame_range(self, node):
