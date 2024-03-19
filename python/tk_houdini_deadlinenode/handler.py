@@ -229,8 +229,18 @@ class TkDeadlineNodeHandler(object):
         
         # Override version by value stored in 'ver' parm
         if node.type().name() in ['sgtk_geometry', 'sgtk_arnold', 'shotgrid_arnold_usd_rop']:
-            version = node.parm('ver').evalAsInt()
-            name = '{} v{}'.format(name, str(version).zfill(3))
+            name = '{} v{:03d}'.format(name, node.parm('ver').evalAsInt())
+
+        version_info_elements = [   seq_name,
+                                    self._session_info['entity_name'],
+                                    self._session_info['task_name'],
+                                    hip_name,
+                                    node.name(),
+                                    'v{:03d}'.format(node.parm('ver').evalAsInt()),
+                                        ]
+
+        version_info = " - ".join([x for x in version_info_elements if x])
+
 
         # Different priority when it is a sim
         priority = self.TK_DEFAULT_GEO_PRIORITY
@@ -255,7 +265,7 @@ class TkDeadlineNodeHandler(object):
             "ExtraInfo0": self._session_info['task_name'],
             "ExtraInfo1": self._session_info['project_name'],
             "ExtraInfo2": self._session_info['entity_name'],
-            "ExtraInfo3": version,
+            "ExtraInfo3": version_info,
             "ExtraInfo4": "",
             "ExtraInfo5": self._session_info['username'],
             }
@@ -370,7 +380,7 @@ class TkDeadlineNodeHandler(object):
                 "ExtraInfo0": self._session_info['task_name'],
                 "ExtraInfo1": self._session_info['project_name'],
                 "ExtraInfo2": self._session_info['entity_name'],
-                "ExtraInfo3": "{} - {} v{} - {}".format(self._session_info['entity_name'], self._session_info['task_name'], str(version).zfill(3), self._session_info['username']),
+                "ExtraInfo3": version_info,
                 "ExtraInfo4": "",
                 "ExtraInfo5": self._session_info['username'],
                 next(ExtraInfoKeyValueExportJob): "ProjectDirectory=%s" % os.path.basename(self._app.sgtk.pipeline_configuration.get_path()),
@@ -402,7 +412,7 @@ class TkDeadlineNodeHandler(object):
                 export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "ProjectId=%i" % self._app.context.project['id']
                 export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "TaskId=%i" % self._session_info['task_id']
                 export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "FrameRate=%s" % hou.fps()
-                
+                export_job_info_file[next(ExtraInfoKeyValueExportJob)] = "VersionName=%s" % version_info
 
                 if self.nozmov_app:
                     export_job_info_file["EventOptIns"] = "NozMov2EventPlugin"
