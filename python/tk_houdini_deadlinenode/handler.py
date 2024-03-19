@@ -205,17 +205,26 @@ class TkDeadlineNodeHandler(object):
             output_file = output_file.replace('$F4', '####')
 
         # Configure job name and version
+        seq_name, hip_name, version = None, None, None
         work_file_path = hou.hipFile.path()
         work_file_template = self._app.get_template("work_file_template")
         if (work_file_template and work_file_template.validate(work_file_path)):
-            version = work_file_template.get_fields(work_file_path)['version']
+            work_fields = work_file_template.get_fields(work_file_path)
+            seq_name = work_fields.get('Sequence')
+            hip_name = work_fields.get('name')
+            version = work_fields.get('version')
 
-        batch_name = 'Houdini - {} - {} - {} - v{} ({})'.format(self._session_info['project_name'],
-                                                            self._session_info['entity_name'],
-                                                            self._session_info['task_name'],
-                                                            str(version).zfill(3),
-                                                            datetime.today().strftime("%Y-%m-%d")
-                                                            )
+        batch_name_elements = [ self._session_info['project_name'],
+                                seq_name,
+                                self._session_info['entity_name'],
+                                self._session_info['task_name'],
+                                hip_name,
+                                'v{:03d}'.format(version),
+                                "({})".format(datetime.today().strftime("%Y-%m-%d")),
+                                    ]
+
+        batch_name = "Houdini " + " - ".join([x for x in batch_name_elements if x])
+
         name = '{} - {}'.format(hou.getenv('HIPNAME'), node.path())
         
         # Override version by value stored in 'ver' parm
