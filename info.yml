@@ -29,6 +29,13 @@ configuration:
         type: config_path
         description: Path to the script used by the deadline houdini plugin to execute the render
 
+    local_rendering:
+        type: bool
+        description: Enables or disables the local rendering on the deadline workers
+        default_value: false
+
+
+
 
 # the Shotgun fields that this app needs in order to operate correctly
 requires_shotgun_fields:

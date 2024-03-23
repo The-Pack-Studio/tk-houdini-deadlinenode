@@ -72,6 +72,8 @@ class TkDeadlineNodeHandler(object):
 
         self._deadline_houdini_render_script  = self._app.get_setting("deadline_houdini_render_script")
 
+        self.local_rendering = self._app.get_setting("local_rendering")
+
         self.nozmov_app = self._app.engine.apps.get("tk-multi-nozmov")
         if not self.nozmov_app:
             self._app.log_info('ERROR: tk-multi-nozmov inside tk-houdini-deadlinenode problem: no preview movies will be created!')
@@ -341,7 +343,7 @@ class TkDeadlineNodeHandler(object):
             "IgnoreInputs": True,
             "OutputDriver": node.path(),
             "Build": "None",
-            "LocalRendering": True,
+            "LocalRendering": self.local_rendering,
         }
 
         if node.type().name() in ['sgtk_geometry', 'sgtk_arnold', 'shotgrid_arnold_usd_rop']:
