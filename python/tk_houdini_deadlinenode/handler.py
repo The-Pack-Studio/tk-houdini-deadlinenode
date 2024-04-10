@@ -300,6 +300,12 @@ class TkDeadlineNodeHandler(object):
             e_path_hou_only_list = [x for x in e_path_list if 'houdini' in x.lower()]
             e_path_hou_only = os.pathsep.join(e_path_hou_only_list)
             job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("PATH", e_path_hou_only)
+        # Usd asset resolver variables
+        if os.environ.get("USD_ASSET_RESOLVER") != None:
+            job_info_file[next(EnvironmentKeyValueJob)] = "{}={}".format("USD_ASSET_RESOLVER", os.environ.get("USD_ASSET_RESOLVER"))
+        if os.environ.get("PXR_PLUGINPATH_NAME") != None:
+            job_info_file[next(EnvironmentKeyValueJob)] = "{}={}".format("PXR_PLUGINPATH_NAME", os.environ.get("PXR_PLUGINPATH_NAME"))
+
         job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("HOUDINI_PACKAGE_DIR", os.environ.get("HOUDINI_PACKAGE_DIR"))
         job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("NOZ_HIPFILE", hou.hipFile.path())
         job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("context", self._app.context.serialize(with_user_credentials=False, use_json=True))
