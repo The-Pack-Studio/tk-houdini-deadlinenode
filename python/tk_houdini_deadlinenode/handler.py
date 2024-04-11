@@ -300,6 +300,9 @@ class TkDeadlineNodeHandler(object):
             e_path_hou_only_list = [x for x in e_path_list if 'houdini' in x.lower()]
             e_path_hou_only = os.pathsep.join(e_path_hou_only_list)
             job_info_file[next(EnvironmentKeyValueJob)] = "%s=%s" % ("PATH", e_path_hou_only)
+        # Shotgrid global debug flag
+        if os.environ.get("TK_DEBUG") != None:
+            job_info_file[next(EnvironmentKeyValueJob)] = "{}={}".format("TK_DEBUG", os.environ.get("TK_DEBUG"))
         # Usd asset resolver variables
         if os.environ.get("USD_ASSET_RESOLVER") != None:
             job_info_file[next(EnvironmentKeyValueJob)] = "{}={}".format("USD_ASSET_RESOLVER", os.environ.get("USD_ASSET_RESOLVER"))
@@ -491,7 +494,7 @@ class TkDeadlineNodeHandler(object):
                 export_plugin_info_file["Version"] = "%s.%s.%s" % (major_version, minor_version, build_version)
                 export_plugin_info_file["Verbose"] = 2
                 export_plugin_info_file["Renderer"] = "Arnold"
-                # export_plugin_info_file["ResolverContextFile"] = "" # TBD
+                export_plugin_info_file["ResolverContextFile"] = source_file
 
             export_job_id = self._deadline_connect.Jobs.SubmitJob(export_job_info_file, export_plugin_info_file)["_id"]
 
