@@ -34,6 +34,18 @@ configuration:
         description: Enables or disables the local rendering on the deadline workers
         default_value: false
 
+    deadline_houdini_group:
+        type: str
+        description: Deadline group that will be used for houdini jobs
+
+    deadline_arnold_group:
+        type: str
+        description: Deadline group that will be used for arnold (kick) jobs
+
+    deadline_husk_group:
+        type: str
+        description: Deadline group that will be used for husk jobs
+
 
 
 

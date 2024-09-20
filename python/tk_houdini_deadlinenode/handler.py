@@ -56,19 +56,17 @@ class TkDeadlineNodeHandler(object):
         fw = sgtk.platform.get_framework("tk-framework-deadline")
         self._deadline_connect = fw.deadline_connection()        
 
-        # Create a pool with the name of the project, if necessary
-        # project_pool = self._app.context.project['name'].replace(" ", "_")
-        # if not project_pool in self._deadline_connect.Pools.GetPoolNames():
-        #     pool_create = self._deadline_connect.Pools.AddPool(project_pool)
-        #     if pool_create == "Success":
-        #         self._app.log_debug(f"Created new deadline pool: {project_pool}")
+        self.deadline_houdini_group = self._app.get_setting("deadline_houdini_group")
+        self.deadline_arnold_group = self._app.get_setting("deadline_arnold_group")
+        self.deadline_husk_group = self._app.get_setting("deadline_husk_group")
 
-
-        # TODO : set the 'correct' project pool and sec pool on the Houdini node
-
-        # cache pools and groups
-        self._deadline_pools = self._deadline_connect.Pools.GetPoolNames()
-        self._deadline_groups = self._deadline_connect.Groups.GetGroupNames()
+        # Create a pool with the name of the project
+        self.project_pool = self._app.context.project['name'].replace(" ", "_")
+        if not self.project_pool in self._deadline_connect.Pools.GetPoolNames():
+            pool_create = self._deadline_connect.Pools.AddPool(self.project_pool)
+            if pool_create == "Success":
+                self._app.log_debug(f"Created new deadline pool: {self.project_pool}")
+        self.secondary_pool = fw.default_pool()    
 
         self._deadline_houdini_render_script  = self._app.get_setting("deadline_houdini_render_script")
 
@@ -91,11 +89,6 @@ class TkDeadlineNodeHandler(object):
             # ingore any errors. ex: metrics logging not supported
             pass
 
-    def get_deadline_pools(self):
-        return self._deadline_pools
-
-    def get_deadline_groups(self):
-        return self._deadline_groups
 
     def submit_to_deadline(self, node):
         firstname = self._app.context.user['name'].split(' ')[0]
@@ -121,9 +114,6 @@ class TkDeadlineNodeHandler(object):
             'entity_type': self._app.context.entity['type'],
             'project_name': self._app.context.project['name'],
             'project_id': self._app.context.project['id'],
-            'pool': self._dl_node.parm('dl_pool').evalAsString(),
-            'sec_pool': self._dl_node.parm('dl_secondary_pool').evalAsString(),
-            'group': self._dl_node.parm('dl_group').evalAsString(),
             'chunk_size': self._dl_node.parm('dl_chunk_size').evalAsString(),
             'username': firstname,
             'dependencies': []
@@ -256,9 +246,9 @@ class TkDeadlineNodeHandler(object):
             "UserName": self._session_info['username'],
             "Name": name,
             "Department": self._session_info['department'],
-            "Pool": self._session_info['pool'],
-            "SecondaryPool": self._session_info['sec_pool'],
-            "Group": self._session_info['group'],
+            "Pool": self.project_pool,
+            "SecondaryPool": self.secondary_pool,
+            "Group": self.deadline_houdini_group,
             "Priority": priority,
             "IsFrameDependent": True,
             "MachineName": platform.node(),
@@ -368,16 +358,16 @@ class TkDeadlineNodeHandler(object):
 
             group = None
             if node.type().name() == 'sgtk_arnold':
-                group = "arnold"
+                group = self.deadline_arnold_group
             elif node.type().name() == 'shotgrid_arnold_usd_rop':
                 lop_node_path = node.parm('loppath').eval()
                 lop_node = hou.node(lop_node_path)
                 if lop_node.parm('render_using'):
                     render_using = lop_node.parm('render_using').evalAsString()
                     if render_using == 'use_husk':
-                        group = "husk"
+                        group = self.deadline_husk_group
                 else:
-                    group = "arnold"
+                    group = self.deadline_arnold_group
 
 
             # generator for 'ExtraInfoKeyValueXX'
@@ -388,8 +378,8 @@ class TkDeadlineNodeHandler(object):
                 "Name": name,
                 "UserName": self._session_info['username'],
                 "Department": self._session_info['department'],
-                "Pool": self._session_info['pool'],
-                "SecondaryPool": self._session_info['sec_pool'],
+                "Pool": self.project_pool,
+                "SecondaryPool": self.secondary_pool,
                 "Group": group,
                 "JobDependencies": render_job_id,
                 "Priority": self.TK_DEFAULT_RENDER_PRIORITY,
