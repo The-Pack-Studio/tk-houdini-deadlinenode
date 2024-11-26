@@ -199,15 +199,17 @@ class TkDeadlineNodeHandler(object):
             output_file = output_file.replace('$F4', '####')
 
         # Configure job name and version
-        hip_name, version = None, None
+        seq_name, hip_name, version = None, None, None
         work_file_path = hou.hipFile.path()
         work_file_template = self._app.get_template("work_file_template")
         if (work_file_template and work_file_template.validate(work_file_path)):
             work_fields = work_file_template.get_fields(work_file_path)
+            seq_name = work_fields.get('Sequence')
             hip_name = work_fields.get('name')
             version = work_fields.get('version')
 
         batch_name_elements = [ self._session_info['project_name'],
+                                seq_name,
                                 self._session_info['entity_name'],
                                 self._session_info['task_name'],
                                 hip_name,
@@ -223,14 +225,15 @@ class TkDeadlineNodeHandler(object):
         if node.type().name() in ['sgtk_geometry', 'sgtk_arnold', 'shotgrid_arnold_usd_rop']:
             name = '{} v{:03d}'.format(name, node.parm('ver').evalAsInt())
 
-        version_info_elements = [   self._session_info['entity_name'],
+        version_info_elements = [   seq_name,
+                                    self._session_info['entity_name'],
                                     self._session_info['task_name'],
                                     hip_name,
                                     node.name(),
                                     'v{:03d}'.format(node.parm('ver').evalAsInt()),
                                         ]
 
-        version_info = " ".join([x for x in version_info_elements if x])
+        version_info = " - ".join([x for x in version_info_elements if x])
 
 
         # Different priority when it is a sim
