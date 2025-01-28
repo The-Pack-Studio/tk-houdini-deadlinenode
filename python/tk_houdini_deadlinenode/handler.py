@@ -91,7 +91,12 @@ class TkDeadlineNodeHandler(object):
 
 
     def submit_to_deadline(self, node):
-        firstname = self._app.context.user['name'].split(' ')[0]
+
+        username = "unknownuser"
+        userInfo = sgtk.util.get_current_user(self._app.sgtk)
+        if userInfo:
+            username = userInfo["login"]
+
         self._dl_node = node
 
         # Sometimes shotgun does not have a task weirdly enough (bug maybe)
@@ -115,7 +120,7 @@ class TkDeadlineNodeHandler(object):
             'project_name': self._app.context.project['name'],
             'project_id': self._app.context.project['id'],
             'chunk_size': self._dl_node.parm('dl_chunk_size').evalAsString(),
-            'username': firstname,
+            'username': username,
             'dependencies': []
         }
 
